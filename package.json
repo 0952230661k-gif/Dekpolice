@@ -1,0 +1,20 @@
+{
+  "name": "duty-discord-bot",
+  "version": "2.1.0",
+  "description": "ระบบเข้าเวรผ่าน Discord (เก็บข้อมูลด้วย node:sqlite ที่มากับ Node.js เอง ไม่ใช้ Google Sheets และไม่ต้องคอมไพล์ native module)",
+  "main": "src/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/index.js",
+    "deploy": "node src/deploy-commands.js"
+  },
+  "dependencies": {
+    "@libsql/client": "^0.17.4",
+    "dayjs": "^1.11.11",
+    "discord.js": "^14.15.3",
+    "dotenv": "^16.4.5"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  }
+}
