@@ -394,7 +394,7 @@ function applicationResultEmbed(app, guildId) {
 
   let description;
   if (approved) {
-    description = `ยินดีต้อนรับเข้าสู่หน่วยงาน **${app.department}**! ตอนนี้คุณสามารถใช้คำสั่ง \`/เข้าเวร\` ได้แล้ว`;
+    description = `ยินดีต้อนรับเข้าสู่หน่วยงาน **${app.department}**!`;
   } else {
     description = `ใบสมัครเข้าหน่วยงาน **${app.department}** ของคุณถูกปฏิเสธ ติดต่อแอดมินหากมีข้อสงสัย`;
   }
