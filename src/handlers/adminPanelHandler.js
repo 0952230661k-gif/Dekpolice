@@ -473,6 +473,7 @@ async function handleSelectRegPosition(interaction) {
     discordId: pending.discordId,
     discordName: pending.discordTag,
     gameName: pending.gameName,
+    badgeNumber: await db.getNextBadgeNumber(),
     position,
     registeredAt: time.nowIso(),
   };
@@ -544,8 +545,12 @@ async function handleSelectSetPosition(interaction) {
     config.positionRoleIds
   );
 
-  // เปลี่ยนชื่อเล่นในดิสคอร์ดให้ตรงกับตำแหน่งใหม่: "[ตำแหน่ง] ชื่อในเกม"
-  const nicknameResult = await setNickname(interaction, discordId, `[${position}] ${existing.gameName}`);
+  // เปลี่ยนชื่อเล่นในดิสคอร์ดให้ตรงกับตำแหน่งใหม่: "[ตำแหน่ง] เลขนำหน้า ชื่อในเกม"
+  const nicknameResult = await setNickname(
+    interaction,
+    discordId,
+    `[${position}] ${embeds.memberDisplayName(existing)}`
+  );
 
   const resultLines = [
     `เปลี่ยนตำแหน่งของ ${existing.gameName} (${existing.discordId}) เป็น "${position}" เรียบร้อยแล้ว`,

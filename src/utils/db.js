@@ -26,6 +26,7 @@ const SCHEMA_STATEMENTS = [
     game_name TEXT,
     department TEXT,
     position TEXT,
+    badge_number TEXT,
     registered_at TEXT
   )`,
   `CREATE TABLE IF NOT EXISTS duty_log (
@@ -121,6 +122,13 @@ const APPLICATIONS_MIGRATION_COLUMNS = [
   { name: "steam_link", ddl: "ALTER TABLE applications ADD COLUMN steam_link TEXT" },
 ];
 
+// รายการคอลัมน์ที่อาจต้องเพิ่มเข้า members ถ้าฐานข้อมูลเดิมถูกสร้างไว้ก่อนที่จะมีฟิลด์เหล่านี้
+const MEMBERS_MIGRATION_COLUMNS = [
+  { name: "badge_number", ddl: "ALTER TABLE members ADD COLUMN badge_number TEXT" },
+];
+
+const NEXT_BADGE_NUMBER_KEY = "next_badge_number";
+
 const ready = (async () => {
   if (!TURSO_URL) {
     await client.execute("PRAGMA journal_mode = WAL;");
@@ -139,6 +147,48 @@ const ready = (async () => {
       }
     }
   }
+  // เผื่อฐานข้อมูลเดิมถูกสร้างไว้ก่อนมีคอลัมน์เลขนำหน้า (badge_number) ให้เพิ่มให้อัตโนมัติ
+  for (const column of MEMBERS_MIGRATION_COLUMNS) {
+    try {
+      await client.execute(column.ddl);
+    } catch (err) {
+      if (!/duplicate column/i.test(err.message)) {
+        console.error(`[db] เพิ่มคอลัมน์ ${column.name} ไม่สำเร็จ:`, err.message);
+      }
+    }
+  }
+
+  // เติมเลขนำหน้าให้สมาชิกเก่าที่สมัครไว้ก่อนจะมีระบบเลขนำหน้า (บอทรุ่นเก่า) ให้อัตโนมัติแค่ครั้งเดียว
+  // เรียงตามวันที่สมัครก่อน-หลัง แล้วไล่เลขให้ต่อเนื่องกันไม่ซ้ำ (001, 002, 003, ...)
+  try {
+    const { rows: unnumbered } = await client.execute(
+      "SELECT discord_id FROM members WHERE badge_number IS NULL OR badge_number = '' ORDER BY registered_at ASC, rowid ASC"
+    );
+    if (unnumbered.length > 0) {
+      const { rows: stateRows } = await client.execute({
+        sql: "SELECT value FROM bot_state WHERE key = ?",
+        args: [NEXT_BADGE_NUMBER_KEY],
+      });
+      let counter = stateRows[0] ? parseInt(stateRows[0].value, 10) : 0;
+      for (const row of unnumbered) {
+        counter += 1;
+        const badge = String(counter).padStart(3, "0");
+        await client.execute({
+          sql: "UPDATE members SET badge_number = ? WHERE discord_id = ?",
+          args: [badge, row.discord_id],
+        });
+      }
+      await client.execute({
+        sql: `INSERT INTO bot_state (key, value) VALUES (?, ?)
+              ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+        args: [NEXT_BADGE_NUMBER_KEY, String(counter)],
+      });
+      console.log(`[db] เติมเลขนำหน้าให้สมาชิกเก่าที่ยังไม่มีเลขอัตโนมัติ ${unnumbered.length} คน`);
+    }
+  } catch (err) {
+    console.error("[db] เติมเลขนำหน้าให้สมาชิกเก่าไม่สำเร็จ:", err.message);
+  }
+
   console.log(
     TURSO_URL
       ? "[db] เชื่อมต่อ Turso (คลาวด์) เรียบร้อย — ข้อมูลจะไม่หายตอน deploy/restart"
@@ -156,6 +206,7 @@ function rowToMember(row) {
     gameName: row.game_name,
     department: row.department,
     position: row.position,
+    badgeNumber: row.badge_number,
     registeredAt: row.registered_at,
   };
 }
@@ -188,14 +239,15 @@ async function findMember(discordId) {
 async function addMember(data) {
   await ready;
   await client.execute({
-    sql: `INSERT INTO members (discord_id, discord_name, game_name, department, position, registered_at)
-          VALUES (?, ?, ?, ?, ?, ?)`,
+    sql: `INSERT INTO members (discord_id, discord_name, game_name, department, position, badge_number, registered_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?)`,
     args: [
       data.discordId,
       data.discordName,
       data.gameName,
       data.department ?? null,
       data.position,
+      data.badgeNumber ?? null,
       data.registeredAt,
     ],
   });
@@ -212,6 +264,15 @@ async function updateMemberPosition(discordId, position) {
   const result = await client.execute({
     sql: "UPDATE members SET position = ? WHERE discord_id = ?",
     args: [position, discordId],
+  });
+  return Number(result.rowsAffected) > 0;
+}
+
+async function updateMemberBadgeNumber(discordId, badgeNumber) {
+  await ready;
+  const result = await client.execute({
+    sql: "UPDATE members SET badge_number = ? WHERE discord_id = ?",
+    args: [badgeNumber, discordId],
   });
   return Number(result.rowsAffected) > 0;
 }
@@ -468,6 +529,31 @@ async function setState(key, value) {
   });
 }
 
+// ---------- เลขนำหน้า/เลขประจำตัวสมาชิก (ออกให้อัตโนมัติ เรียงตามลำดับ ไม่ซ้ำกัน) ----------
+
+/**
+ * ออกเลขนำหน้าตัวถัดไปแบบเรียงลำดับ (001, 002, 003, ...) โดยใช้ตัวนับที่เก็บใน bot_state
+ * ตัวนับจะเดินหน้าเรื่อยๆ เท่านั้น (ไม่ถอยหลัง/ไม่นำเลขเดิมที่ถูกลบสมาชิกไปแล้วกลับมาใช้ซ้ำ)
+ * เพื่อการันตีว่าเลขนำหน้าจะไม่ซ้ำกันแม้จะมีการลบสมาชิกออกไปก่อนหน้านี้
+ */
+async function getNextBadgeNumber() {
+  await ready;
+  const current = await getState(NEXT_BADGE_NUMBER_KEY);
+  const next = current ? parseInt(current, 10) + 1 : 1;
+  await setState(NEXT_BADGE_NUMBER_KEY, String(next));
+  return String(next).padStart(3, "0");
+}
+
+/** หาสมาชิกที่ถือเลขนำหน้านี้อยู่ (ใช้เช็คกันชนตอนแอดมินแก้ไขเลขนำหน้าด้วยตนเอง) */
+async function findMemberByBadgeNumber(badgeNumber) {
+  await ready;
+  const { rows } = await client.execute({
+    sql: "SELECT * FROM members WHERE badge_number = ?",
+    args: [badgeNumber],
+  });
+  return rowToMember(rows[0]);
+}
+
 // ---------- Weekly Summary History (เก็บสรุปชั่วโมงเวรแยกตามสัปดาห์ ดูย้อนหลังได้) ----------
 
 function rowToWeeklyHistory(row) {
@@ -702,6 +788,7 @@ module.exports = {
   addMember,
   getAllMembers,
   updateMemberPosition,
+  updateMemberBadgeNumber,
   removeMember,
   getDutyLogs,
   findOpenDuty,
@@ -722,6 +809,8 @@ module.exports = {
   setRosterPanel,
   getState,
   setState,
+  getNextBadgeNumber,
+  findMemberByBadgeNumber,
   saveWeeklyHistory,
   getWeeklyHistory,
   listWeeklyHistoryWeeks,
