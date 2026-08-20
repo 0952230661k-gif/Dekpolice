@@ -159,7 +159,7 @@ const ready = (async () => {
   }
 
   // เติมเลขนำหน้าให้สมาชิกเก่าที่สมัครไว้ก่อนจะมีระบบเลขนำหน้า (บอทรุ่นเก่า) ให้อัตโนมัติแค่ครั้งเดียว
-  // เรียงตามวันที่สมัครก่อน-หลัง แล้วไล่เลขให้ต่อเนื่องกันไม่ซ้ำ (001, 002, 003, ...)
+  // เรียงตามวันที่สมัครก่อน-หลัง แล้วไล่เลขให้ต่อเนื่องกันไม่ซ้ำ (00, 01, 02, ...)
   try {
     const { rows: unnumbered } = await client.execute(
       "SELECT discord_id FROM members WHERE badge_number IS NULL OR badge_number = '' ORDER BY registered_at ASC, rowid ASC"
@@ -169,10 +169,10 @@ const ready = (async () => {
         sql: "SELECT value FROM bot_state WHERE key = ?",
         args: [NEXT_BADGE_NUMBER_KEY],
       });
-      let counter = stateRows[0] ? parseInt(stateRows[0].value, 10) : 0;
+      let counter = stateRows[0] ? parseInt(stateRows[0].value, 10) : -1;
       for (const row of unnumbered) {
         counter += 1;
-        const badge = String(counter).padStart(3, "0");
+        const badge = String(counter).padStart(2, "0");
         await client.execute({
           sql: "UPDATE members SET badge_number = ? WHERE discord_id = ?",
           args: [badge, row.discord_id],
@@ -532,16 +532,16 @@ async function setState(key, value) {
 // ---------- เลขนำหน้า/เลขประจำตัวสมาชิก (ออกให้อัตโนมัติ เรียงตามลำดับ ไม่ซ้ำกัน) ----------
 
 /**
- * ออกเลขนำหน้าตัวถัดไปแบบเรียงลำดับ (001, 002, 003, ...) โดยใช้ตัวนับที่เก็บใน bot_state
+ * ออกเลขนำหน้าตัวถัดไปแบบเรียงลำดับ (00, 01, 02, ...) โดยใช้ตัวนับที่เก็บใน bot_state
  * ตัวนับจะเดินหน้าเรื่อยๆ เท่านั้น (ไม่ถอยหลัง/ไม่นำเลขเดิมที่ถูกลบสมาชิกไปแล้วกลับมาใช้ซ้ำ)
  * เพื่อการันตีว่าเลขนำหน้าจะไม่ซ้ำกันแม้จะมีการลบสมาชิกออกไปก่อนหน้านี้
  */
 async function getNextBadgeNumber() {
   await ready;
   const current = await getState(NEXT_BADGE_NUMBER_KEY);
-  const next = current ? parseInt(current, 10) + 1 : 1;
+  const next = current ? parseInt(current, 10) + 1 : 0;
   await setState(NEXT_BADGE_NUMBER_KEY, String(next));
-  return String(next).padStart(3, "0");
+  return String(next).padStart(2, "0");
 }
 
 /** หาสมาชิกที่ถือเลขนำหน้านี้อยู่ (ใช้เช็คกันชนตอนแอดมินแก้ไขเลขนำหน้าด้วยตนเอง) */

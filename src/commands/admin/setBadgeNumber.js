@@ -60,10 +60,12 @@ module.exports = {
     await db.updateMemberBadgeNumber(discordId, badgeNumber);
     await roster.refreshRoster(interaction.client);
 
-    // อัปเดตชื่อเล่นในดิสคอร์ดให้ตรงกับเลขนำหน้าใหม่ (คงรูปแบบ "[ตำแหน่ง] ชื่อ" เดิมไว้ ถ้ามีตำแหน่ง)
-    const newNickname = existing.position
-      ? `[${existing.position}] ${embeds.memberDisplayName({ badgeNumber, gameName: existing.gameName })}`
-      : embeds.memberDisplayName({ badgeNumber, gameName: existing.gameName });
+    // อัปเดตชื่อเล่นในดิสคอร์ดให้ตรงกับเลขนำหน้าใหม่ (เลขนำหน้าอยู่หน้าสุด ก่อนยศ)
+    const newNickname = embeds.memberNickname({
+      badgeNumber,
+      position: existing.position,
+      gameName: existing.gameName,
+    });
     const nicknameResult = await setNickname(interaction, discordId, newNickname);
 
     const resultLines = [

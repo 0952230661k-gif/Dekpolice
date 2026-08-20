@@ -6,6 +6,12 @@ function memberDisplayName({ badgeNumber, gameName }) {
   return badgeNumber ? `${badgeNumber} ${gameName}` : gameName;
 }
 
+// ---------- Helper: ชื่อเล่นในดิสคอร์ด รูปแบบ "เลขนำหน้า [ตำแหน่ง] ชื่อ" (เลขนำหน้าอยู่หน้าสุด ก่อนยศ) ----------
+function memberNickname({ badgeNumber, position, gameName }) {
+  const prefix = badgeNumber ? `${badgeNumber} ` : "";
+  return position ? `${prefix}[${position}] ${gameName}` : `${prefix}${gameName}`;
+}
+
 function registerEmbed({ discordName, gameName, position, badgeNumber, addedBy }) {
   const embed = new EmbedBuilder()
     .setColor(0x5865f2)
@@ -412,6 +418,7 @@ function applicationResultEmbed(app, guildId) {
 
 module.exports = {
   memberDisplayName,
+  memberNickname,
   registerEmbed,
   checkInEmbed,
   checkOutEmbed,
