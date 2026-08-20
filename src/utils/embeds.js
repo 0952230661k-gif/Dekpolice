@@ -6,9 +6,9 @@ function memberDisplayName({ gameName }) {
   return gameName;
 }
 
-// ---------- Helper: ชื่อเล่นในดิสคอร์ด รูปแบบ "[ตำแหน่ง] ชื่อ" ----------
-function memberNickname({ position, gameName }) {
-  return position ? `[${position}] ${gameName}` : gameName;
+// ---------- Helper: ชื่อเล่นในดิสคอร์ด รูปแบบ "[PD] ชื่อ" (ขึ้น PD คงที่ ไม่ขึ้นชื่อตำแหน่ง) ----------
+function memberNickname({ gameName }) {
+  return `[PD] ${gameName}`;
 }
 
 function registerEmbed({ discordName, gameName, position, addedBy }) {
