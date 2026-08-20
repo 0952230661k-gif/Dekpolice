@@ -395,11 +395,6 @@ function applicationResultEmbed(app, guildId) {
   let description;
   if (approved) {
     description = `ยินดีต้อนรับเข้าสู่หน่วยงาน **${app.department}**! ตอนนี้คุณสามารถใช้คำสั่ง \`/เข้าเวร\` ได้แล้ว`;
-
-    const channelId = config.dutyChannelId;
-    if (guildId && channelId && !channelId.startsWith("ใส่_")) {
-      description += `\n\nให้ไปเข้าเวรในห้องนี้ด้วยนะจ๊ะ 🟢\nhttps://discord.com/channels/${guildId}/${channelId}`;
-    }
   } else {
     description = `ใบสมัครเข้าหน่วยงาน **${app.department}** ของคุณถูกปฏิเสธ ติดต่อแอดมินหากมีข้อสงสัย`;
   }
