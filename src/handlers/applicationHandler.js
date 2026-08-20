@@ -211,21 +211,17 @@ async function handleDecision(interaction) {
 
   let roleResult = null; // null = ไม่ได้พยายามแจกยศ (ไม่ใช่การอนุมัติครั้งแรก หรือไม่ได้ตั้งค่า)
   let approveNicknameResult = null;
-  let assignedBadgeNumber = null; // เลขนำหน้าที่ออกให้ตอนอนุมัติ (ถ้าเป็นการอนุมัติครั้งแรก)
 
   if (approve) {
     const alreadyMember = await db.findMember(application.discordId);
     if (!alreadyMember) {
       const defaultPosition = config.positions?.[config.positions.length - 1] || "สมาชิกใหม่";
-      const badgeNumber = await db.getNextBadgeNumber();
-      assignedBadgeNumber = badgeNumber;
       await db.addMember({
         discordId: application.discordId,
         discordName: application.discordName,
         gameName: application.gameName,
         department: application.department,
         position: defaultPosition,
-        badgeNumber,
         registeredAt: time.nowIso(),
       });
 
@@ -238,11 +234,11 @@ async function handleDecision(interaction) {
 
       roleResult = await assignRoles(interaction, application.discordId, config.autoRoleIds);
 
-      // เปลี่ยนชื่อเล่นเป็นรูปแบบสมาชิกจริง: "เลขนำหน้า [ตำแหน่ง] ชื่อในเกม" (เลขนำหน้าอยู่หน้าสุด ก่อนยศ)
+      // เปลี่ยนชื่อเล่นเป็นรูปแบบสมาชิกจริง: "[ตำแหน่ง] ชื่อในเกม"
       approveNicknameResult = await setNickname(
         interaction,
         application.discordId,
-        embeds.memberNickname({ badgeNumber, position: defaultPosition, gameName: application.gameName })
+        embeds.memberNickname({ position: defaultPosition, gameName: application.gameName })
       );
     }
   }
@@ -261,10 +257,6 @@ async function handleDecision(interaction) {
     { name: "ชื่อผู้คุมสอบ", value: application.examinerName, inline: true },
     { name: "ลิงค์ Steam", value: application.steamLink, inline: true },
   ];
-
-  if (assignedBadgeNumber) {
-    logFields.push({ name: "เลขนำหน้า", value: assignedBadgeNumber, inline: true });
-  }
 
   if (roleResult) {
     if (roleResult.added?.length) {

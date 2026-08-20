@@ -108,7 +108,6 @@ module.exports = {
       discordId: target.id,
       discordName: target.tag,
       gameName,
-      badgeNumber: await db.getNextBadgeNumber(),
       position,
       registeredAt: time.nowIso(),
     };

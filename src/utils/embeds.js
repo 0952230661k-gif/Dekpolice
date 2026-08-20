@@ -1,25 +1,23 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
 const config = require("../../config.json");
 
-// ---------- Helper: ชื่อแสดงผลของสมาชิก (นำเลขนำหน้ามาต่อหน้าชื่อ ถ้ามี) ----------
-function memberDisplayName({ badgeNumber, gameName }) {
-  return badgeNumber ? `${badgeNumber} ${gameName}` : gameName;
+// ---------- Helper: ชื่อแสดงผลของสมาชิก ----------
+function memberDisplayName({ gameName }) {
+  return gameName;
 }
 
-// ---------- Helper: ชื่อเล่นในดิสคอร์ด รูปแบบ "เลขนำหน้า [ตำแหน่ง] ชื่อ" (เลขนำหน้าอยู่หน้าสุด ก่อนยศ) ----------
-function memberNickname({ badgeNumber, position, gameName }) {
-  const prefix = badgeNumber ? `${badgeNumber} ` : "";
-  return position ? `${prefix}[${position}] ${gameName}` : `${prefix}${gameName}`;
+// ---------- Helper: ชื่อเล่นในดิสคอร์ด รูปแบบ "[ตำแหน่ง] ชื่อ" ----------
+function memberNickname({ position, gameName }) {
+  return position ? `[${position}] ${gameName}` : gameName;
 }
 
-function registerEmbed({ discordName, gameName, position, badgeNumber, addedBy }) {
+function registerEmbed({ discordName, gameName, position, addedBy }) {
   const embed = new EmbedBuilder()
     .setColor(0x5865f2)
     .setTitle("📋 เพิ่มสมาชิกสำเร็จ")
     .addFields(
       { name: "Discord", value: discordName, inline: true },
       { name: "ชื่อ", value: gameName, inline: true },
-      { name: "เลขนำหน้า", value: badgeNumber || "-", inline: true },
       { name: "ตำแหน่ง", value: position, inline: true }
     )
     .setTimestamp();
@@ -31,8 +29,8 @@ function registerEmbed({ discordName, gameName, position, badgeNumber, addedBy }
   return embed;
 }
 
-function checkInEmbed({ discordUser, gameName, position, badgeNumber, time, via }) {
-  const displayName = memberDisplayName({ badgeNumber, gameName });
+function checkInEmbed({ discordUser, gameName, position, time, via }) {
+  const displayName = memberDisplayName({ gameName });
   const embed = new EmbedBuilder()
     .setColor(0x57f287)
     .setTitle("🟢 เข้าเวร")
@@ -43,7 +41,6 @@ function checkInEmbed({ discordUser, gameName, position, badgeNumber, time, via 
     )
     .addFields(
       { name: "ชื่อ", value: gameName, inline: true },
-      { name: "เลขนำหน้า", value: badgeNumber || "-", inline: true },
       { name: "ตำแหน่ง", value: position || "-", inline: true },
       { name: "เวลา", value: time, inline: true }
     )
@@ -59,8 +56,8 @@ function checkInEmbed({ discordUser, gameName, position, badgeNumber, time, via 
   return embed;
 }
 
-function checkOutEmbed({ discordUser, gameName, position, badgeNumber, checkIn, checkOut, hours, via }) {
-  const displayName = memberDisplayName({ badgeNumber, gameName });
+function checkOutEmbed({ discordUser, gameName, position, checkIn, checkOut, hours, via }) {
+  const displayName = memberDisplayName({ gameName });
   const embed = new EmbedBuilder()
     .setColor(0xed4245)
     .setTitle("🔴 ออกเวร")
@@ -71,7 +68,6 @@ function checkOutEmbed({ discordUser, gameName, position, badgeNumber, checkIn, 
     )
     .addFields(
       { name: "ชื่อ", value: gameName, inline: true },
-      { name: "เลขนำหน้า", value: badgeNumber || "-", inline: true },
       { name: "ตำแหน่ง", value: position || "-", inline: true },
       { name: "เวลาเข้า", value: checkIn, inline: true },
       { name: "เวลาออก", value: checkOut, inline: true },
@@ -91,8 +87,8 @@ function checkOutEmbed({ discordUser, gameName, position, badgeNumber, checkIn, 
 
 // ---------- Log แบบเรียบร้อย สำหรับส่งเข้าห้อง log (สไตล์เดียวกับแผงเข้าเวร) ----------
 
-function checkInLogEmbed({ discordUser, gameName, position, badgeNumber, time }) {
-  const displayName = memberDisplayName({ badgeNumber, gameName });
+function checkInLogEmbed({ discordUser, gameName, position, time }) {
+  const displayName = memberDisplayName({ gameName });
   const embed = new EmbedBuilder()
     .setColor(0x57f287)
     .setDescription(`🟢 **${displayName}** เข้าเวรแล้ว${discordUser ? ` — <@${discordUser.id}>` : ""}`)
@@ -108,8 +104,8 @@ function checkInLogEmbed({ discordUser, gameName, position, badgeNumber, time })
   return embed;
 }
 
-function checkOutLogEmbed({ discordUser, gameName, position, badgeNumber, checkIn, checkOut, hours }) {
-  const displayName = memberDisplayName({ badgeNumber, gameName });
+function checkOutLogEmbed({ discordUser, gameName, position, checkIn, checkOut, hours }) {
+  const displayName = memberDisplayName({ gameName });
   const embed = new EmbedBuilder()
     .setColor(0xed4245)
     .setDescription(`🔴 **${displayName}** ออกเวรแล้ว${discordUser ? ` — <@${discordUser.id}>` : ""}`)
@@ -127,10 +123,10 @@ function checkOutLogEmbed({ discordUser, gameName, position, badgeNumber, checkI
   return embed;
 }
 
-function hoursEmbed({ gameName, badgeNumber, hoursToday, hoursWeek, hoursMonth, dutyCount }) {
+function hoursEmbed({ gameName, hoursToday, hoursWeek, hoursMonth, dutyCount }) {
   return new EmbedBuilder()
     .setColor(0xfee75c)
-    .setTitle(`⏱️ ชั่วโมงเข้าเวรของ ${memberDisplayName({ badgeNumber, gameName })}`)
+    .setTitle(`⏱️ ชั่วโมงเข้าเวรของ ${memberDisplayName({ gameName })}`)
     .addFields(
       { name: "วันนี้", value: `${hoursToday} ชม.`, inline: true },
       { name: "สัปดาห์นี้", value: `${hoursWeek} ชม.`, inline: true },

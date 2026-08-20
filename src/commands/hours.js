@@ -20,7 +20,7 @@ module.exports = {
     const summary = time.summarizeLogs(logs);
 
     await interaction.editReply({
-      embeds: [embeds.hoursEmbed({ gameName: member.gameName, badgeNumber: member.badgeNumber, ...summary })],
+      embeds: [embeds.hoursEmbed({ gameName: member.gameName, ...summary })],
     });
   },
 };

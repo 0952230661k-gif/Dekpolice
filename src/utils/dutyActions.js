@@ -36,7 +36,6 @@ async function checkIn(discordUser) {
     discordUser,
     gameName: member.gameName,
     position: member.position,
-    badgeNumber: member.badgeNumber,
     time: displayTime,
   });
 
@@ -44,7 +43,6 @@ async function checkIn(discordUser) {
     discordUser,
     gameName: member.gameName,
     position: member.position,
-    badgeNumber: member.badgeNumber,
     time: displayTime,
   });
 
@@ -76,7 +74,6 @@ async function checkOut(discordUser) {
     discordUser,
     gameName: openDuty.name,
     position: member?.position,
-    badgeNumber: member?.badgeNumber,
     checkIn: displayCheckIn,
     checkOut: displayCheckOut,
     hours,
@@ -86,7 +83,6 @@ async function checkOut(discordUser) {
     discordUser,
     gameName: openDuty.name,
     position: member?.position,
-    badgeNumber: member?.badgeNumber,
     checkIn: displayCheckIn,
     checkOut: displayCheckOut,
     hours,
