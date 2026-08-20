@@ -70,35 +70,7 @@ const SCHEMA_STATEMENTS = [
     updated_at TEXT,
     PRIMARY KEY (week_key, discord_id)
   )`,
-  `CREATE TABLE IF NOT EXISTS queue_members (
-    discord_id TEXT PRIMARY KEY,
-    name TEXT,
-    status TEXT,
-    queue_order INTEGER,
-    case_started_at TEXT,
-    break_started_at TEXT,
-    break_until TEXT,
-    break_minutes INTEGER,
-    loop_started_at TEXT,
-    joined_at TEXT,
-    updated_at TEXT,
-    off_duty_pending INTEGER DEFAULT 0
-  )`,
-  `CREATE TABLE IF NOT EXISTS queue_panel (
-    id INTEGER PRIMARY KEY CHECK (id = 1),
-    channel_id TEXT,
-    message_id TEXT
-  )`,
-  `CREATE TABLE IF NOT EXISTS queue_case_log (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    discord_id TEXT,
-    name TEXT,
-    action TEXT,
-    case_started_at TEXT,
-    case_ended_at TEXT,
-    duration_minutes REAL,
-    created_at TEXT
-  )`,
+
   `CREATE TABLE IF NOT EXISTS vehicle_plates (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     plate_number TEXT UNIQUE,
@@ -561,157 +533,6 @@ async function listWeeklyHistoryWeeks(limit = 25) {
   }));
 }
 
-// ---------- ระบบคิวแพทย์ (Queue) ----------
-
-const QUEUE_STATUSES = ["ready", "on_case", "break", "loop"];
-
-function rowToQueueMember(row) {
-  if (!row) return null;
-  return {
-    discordId: row.discord_id,
-    name: row.name,
-    status: row.status,
-    queueOrder: row.queue_order,
-    caseStartedAt: row.case_started_at,
-    breakStartedAt: row.break_started_at,
-    breakUntil: row.break_until,
-    breakMinutes: row.break_minutes,
-    loopStartedAt: row.loop_started_at,
-    joinedAt: row.joined_at,
-    updatedAt: row.updated_at,
-    offDutyPending: !!row.off_duty_pending,
-  };
-}
-
-async function getQueueMember(discordId) {
-  await ready;
-  const { rows } = await client.execute({
-    sql: "SELECT * FROM queue_members WHERE discord_id = ?",
-    args: [discordId],
-  });
-  return rowToQueueMember(rows[0]);
-}
-
-async function getAllQueueMembers() {
-  await ready;
-  const { rows } = await client.execute("SELECT * FROM queue_members ORDER BY queue_order ASC");
-  return rows.map(rowToQueueMember);
-}
-
-async function nextQueueOrder() {
-  await ready;
-  const { rows } = await client.execute("SELECT COALESCE(MAX(queue_order), 0) AS maxOrder FROM queue_members");
-  return (rows[0]?.maxOrder ?? 0) + 1;
-}
-
-/** เพิ่มคนเข้าคิวท้ายสุดด้วยสถานะ "พร้อมรับเคส" ถ้ามีอยู่แล้วจะไม่ทำอะไร (กันซ้ำ) */
-async function addQueueMember(discordId, name, nowIso) {
-  await ready;
-  const existing = await getQueueMember(discordId);
-  if (existing) return existing;
-  const order = await nextQueueOrder();
-  await client.execute({
-    sql: `INSERT INTO queue_members (discord_id, name, status, queue_order, joined_at, updated_at, off_duty_pending)
-          VALUES (?, ?, 'ready', ?, ?, ?, 0)`,
-    args: [discordId, name, order, nowIso, nowIso],
-  });
-  return getQueueMember(discordId);
-}
-
-async function removeQueueMember(discordId) {
-  await ready;
-  const result = await client.execute({
-    sql: "DELETE FROM queue_members WHERE discord_id = ?",
-    args: [discordId],
-  });
-  return Number(result.rowsAffected) > 0;
-}
-
-async function moveQueueMemberToBack(discordId, nowIso) {
-  await ready;
-  const order = await nextQueueOrder();
-  await client.execute({
-    sql: "UPDATE queue_members SET queue_order = ?, updated_at = ? WHERE discord_id = ?",
-    args: [order, nowIso, discordId],
-  });
-}
-
-/** ตั้งสถานะเป็น "พร้อมรับเคส" เคลียร์ข้อมูลเคส/พัก/ชุบลูปทั้งหมด (ไม่ย้ายลำดับคิว) */
-async function setQueueReady(discordId, nowIso) {
-  await ready;
-  await client.execute({
-    sql: `UPDATE queue_members SET status = 'ready',
-            case_started_at = NULL, break_started_at = NULL, break_until = NULL,
-            break_minutes = NULL, loop_started_at = NULL, updated_at = ?
-          WHERE discord_id = ?`,
-    args: [nowIso, discordId],
-  });
-}
-
-async function setQueueOnCase(discordId, nowIso) {
-  await ready;
-  await client.execute({
-    sql: "UPDATE queue_members SET status = 'on_case', case_started_at = ?, updated_at = ? WHERE discord_id = ?",
-    args: [nowIso, nowIso, discordId],
-  });
-}
-
-async function setQueueBreak(discordId, nowIso, untilIso, minutes) {
-  await ready;
-  await client.execute({
-    sql: `UPDATE queue_members SET status = 'break', break_started_at = ?, break_until = ?, break_minutes = ?, updated_at = ?
-          WHERE discord_id = ?`,
-    args: [nowIso, untilIso, minutes, nowIso, discordId],
-  });
-}
-
-async function setQueueLoop(discordId, nowIso) {
-  await ready;
-  await client.execute({
-    sql: "UPDATE queue_members SET status = 'loop', loop_started_at = ?, updated_at = ? WHERE discord_id = ?",
-    args: [nowIso, nowIso, discordId],
-  });
-}
-
-async function setQueueOffDutyPending(discordId, pending) {
-  await ready;
-  await client.execute({
-    sql: "UPDATE queue_members SET off_duty_pending = ? WHERE discord_id = ?",
-    args: [pending ? 1 : 0, discordId],
-  });
-}
-
-async function getExpiredBreaks(nowIso) {
-  await ready;
-  const { rows } = await client.execute({
-    sql: "SELECT * FROM queue_members WHERE status = 'break' AND break_until IS NOT NULL AND break_until <= ?",
-    args: [nowIso],
-  });
-  return rows.map(rowToQueueMember);
-}
-
-async function addQueueCaseLog(entry) {
-  await ready;
-  await client.execute({
-    sql: `INSERT INTO queue_case_log (discord_id, name, action, case_started_at, case_ended_at, duration_minutes, created_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    args: [
-      entry.discordId,
-      entry.name,
-      entry.action,
-      entry.caseStartedAt ?? null,
-      entry.caseEndedAt ?? null,
-      entry.durationMinutes ?? null,
-      entry.createdAt,
-    ],
-  });
-}
-
-async function clearQueueMembers() {
-  await ready;
-  await client.execute("DELETE FROM queue_members");
-}
-
 // ---------- ระบบลงทะเบียนป้ายทะเบียนรถ ----------
 
 function rowToPlate(row) {
@@ -791,24 +612,6 @@ async function setPlateListPanel(channelId, messageId) {
   await ready;
   await client.execute({
     sql: `INSERT INTO plate_list_panel (id, channel_id, message_id) VALUES (1, ?, ?)
-          ON CONFLICT(id) DO UPDATE SET channel_id = excluded.channel_id, message_id = excluded.message_id`,
-    args: [channelId, messageId],
-  });
-}
-
-// ---------- Queue Panel (ข้อความปักหมุดของระบบคิวแพทย์) ----------
-
-async function getQueuePanel() {
-  await ready;
-  const { rows } = await client.execute("SELECT channel_id, message_id FROM queue_panel WHERE id = 1");
-  if (!rows[0]) return null;
-  return { channelId: rows[0].channel_id, messageId: rows[0].message_id };
-}
-
-async function setQueuePanel(channelId, messageId) {
-  await ready;
-  await client.execute({
-    sql: `INSERT INTO queue_panel (id, channel_id, message_id) VALUES (1, ?, ?)
           ON CONFLICT(id) DO UPDATE SET channel_id = excluded.channel_id, message_id = excluded.message_id`,
     args: [channelId, messageId],
   });
@@ -922,21 +725,6 @@ module.exports = {
   saveWeeklyHistory,
   getWeeklyHistory,
   listWeeklyHistoryWeeks,
-  getQueueMember,
-  getAllQueueMembers,
-  addQueueMember,
-  removeQueueMember,
-  moveQueueMemberToBack,
-  setQueueReady,
-  setQueueOnCase,
-  setQueueBreak,
-  setQueueLoop,
-  setQueueOffDutyPending,
-  getExpiredBreaks,
-  addQueueCaseLog,
-  getQueuePanel,
-  setQueuePanel,
-  clearQueueMembers,
   findPlateByNumber,
   getAllPlates,
   addPlate,

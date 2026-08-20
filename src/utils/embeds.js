@@ -79,7 +79,7 @@ function checkInLogEmbed({ discordUser, gameName, position, time }) {
       { name: "ตำแหน่ง", value: position || "-", inline: true },
       { name: "เวลาเข้าเวร", value: time, inline: true }
     )
-    .setFooter({ text: "MEDIC DUTY SYSTEM • Duty System" })
+    .setFooter({ text: "POLICE DUTY SYSTEM • Duty System" })
     .setTimestamp();
 
   if (discordUser) embed.setThumbnail(discordUser.displayAvatarURL());
@@ -97,7 +97,7 @@ function checkOutLogEmbed({ discordUser, gameName, position, checkIn, checkOut, 
       { name: "เวลาออก", value: checkOut, inline: true },
       { name: "รวมชั่วโมง", value: `${hours} ชม.`, inline: true }
     )
-    .setFooter({ text: "MEDIC DUTY SYSTEM • Duty System" })
+    .setFooter({ text: "POLICE DUTY SYSTEM • Duty System" })
     .setTimestamp();
 
   if (discordUser) embed.setThumbnail(discordUser.displayAvatarURL());
@@ -150,7 +150,7 @@ function dutyPanelEmbeds(onDutyList = []) {
   const statusEmbed = new EmbedBuilder()
     .setColor(statusColor)
     .setDescription(`${statusDot} **กำลังเข้าเวร (${count} คน)**\n${listText}`)
-    .setFooter({ text: "MEDIC DUTY SYSTEM • Duty System" })
+    .setFooter({ text: "POLICE DUTY SYSTEM • Duty System" })
     .setTimestamp();
 
   return [headerEmbed, infoEmbed, statusEmbed];
@@ -243,85 +243,6 @@ function successEmbed(message) {
   return new EmbedBuilder().setColor(0x57f287).setDescription(`✅ ${message}`);
 }
 
-// ---------- ระบบคิวแพทย์ (Queue) ----------
-
-const QUEUE_DIVIDER = "━━━━━━━━━━━━━━━━━━";
-
-function queueEmbed({ ready = [], onCase = [], onBreak = [], loop = [] }) {
-  const lines = ["🏥 **ระบบคิวแพทย์ประจำเวร**", QUEUE_DIVIDER, "", "🟢 **คิวพร้อมรับเคส**", ""];
-
-  if (ready.length === 0) {
-    lines.push("> _ไม่มีใครอยู่ในคิว_");
-  } else {
-    ready.forEach((r, i) => lines.push(`> ${i + 1}. 👨‍⚕️ <@${r.discordId}> (${r.name})`));
-  }
-
-  lines.push("", QUEUE_DIVIDER, "", "🚑 **กำลังรับเคส**", "");
-  if (onCase.length === 0) {
-    lines.push("> _ไม่มีใครกำลังรับเคส_");
-  } else {
-    onCase.forEach((m) => {
-      lines.push(`> <@${m.discordId}> (${m.name})`);
-      lines.push(`> เริ่มรับเคส: ${m.startedAtText}`);
-    });
-  }
-
-  lines.push("", QUEUE_DIVIDER, "", "☕ **กำลังพัก**", "");
-  if (onBreak.length === 0) {
-    lines.push("> _ไม่มีใครกำลังพัก_");
-  } else {
-    onBreak.forEach((m) => {
-      lines.push(`> <@${m.discordId}> (${m.name})`);
-      lines.push(`> เหลือเวลา ${m.remainingMinutes} นาที`);
-    });
-  }
-
-  lines.push("", QUEUE_DIVIDER, "", "🔄 **ชุบลูป**", "");
-  if (loop.length === 0) {
-    lines.push("> _ไม่มีใครชุบลูปอยู่_");
-  } else {
-    loop.forEach((m) => lines.push(`> <@${m.discordId}> (${m.name})`));
-  }
-
-  const total = ready.length + onCase.length + onBreak.length + loop.length;
-  lines.push(
-    "",
-    QUEUE_DIVIDER,
-    "",
-    `👥 **แพทย์เข้าเวรทั้งหมด:** ${total} คน`,
-    "",
-    `🟢 พร้อม: ${ready.length} คน`,
-    `🚑 รับเคส: ${onCase.length} คน`,
-    `☕ พัก: ${onBreak.length} คน`,
-    `🔄 ชุบลูป: ${loop.length} คน`
-  );
-
-  return new EmbedBuilder()
-    .setColor(0x5865f2)
-    .setDescription(lines.join("\n"))
-    .setFooter({ text: "MEDIC DUTY SYSTEM • Queue System" })
-    .setTimestamp();
-}
-
-function queueMainRow() {
-  return new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId("q_takecase").setLabel("รับเคส").setEmoji("🚑").setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId("q_endcase").setLabel("จบเคส").setEmoji("✅").setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId("q_break").setLabel("พัก").setEmoji("☕").setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId("q_loop").setLabel("ชุบลูป").setEmoji("🔄").setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId("q_return").setLabel("กลับเข้าคิว").setEmoji("🟢").setStyle(ButtonStyle.Success)
-  );
-}
-
-function queueBreakDurationRow() {
-  return new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId("q_break_15").setLabel("15 นาที").setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId("q_break_30").setLabel("30 นาที").setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId("q_break_60").setLabel("60 นาที").setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId("q_break_custom").setLabel("กำหนดเวลาเอง").setEmoji("✏️").setStyle(ButtonStyle.Primary)
-  );
-}
-
 // ---------- ระบบลงทะเบียนป้ายทะเบียนรถ ----------
 
 function plateSubmitPanelEmbeds() {
@@ -330,7 +251,7 @@ function plateSubmitPanelEmbeds() {
   const infoEmbed = new EmbedBuilder()
     .setColor(0x5865f2)
     .setDescription("กดปุ่มด้านล่างเพื่อลงทะเบียนป้ายทะเบียนรถคันใหม่ (เลขทะเบียน + ชื่อเจ้าของ/ผู้ขับ)")
-    .setFooter({ text: "MEDIC DUTY SYSTEM • Plate Registration" })
+    .setFooter({ text: "POLICE DUTY SYSTEM • Plate Registration" })
     .setTimestamp();
 
   return [headerEmbed, infoEmbed];
@@ -388,7 +309,7 @@ function applicationMenuEmbed(departments) {
         .map((d) => `\`${d}\``)
         .join(" ")}`
     )
-    .setFooter({ text: "MEDIC DUTY SYSTEM • Application" })
+    .setFooter({ text: "POLICE DUTY SYSTEM • Application" })
     .setTimestamp();
 }
 
@@ -485,9 +406,6 @@ module.exports = {
   dutyPanelEmbeds,
   dutyPanelRow,
   rosterEmbeds,
-  queueEmbed,
-  queueMainRow,
-  queueBreakDurationRow,
   plateSubmitPanelEmbeds,
   plateSubmitRow,
   plateListEmbeds,

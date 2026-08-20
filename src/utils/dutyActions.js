@@ -1,7 +1,6 @@
 const db = require("./db");
 const time = require("./time");
 const embeds = require("./embeds");
-const queue = require("./queue");
 
 /**
  * เข้าเวร — ใช้ร่วมกันทั้งคำสั่ง /เข้าเวร และปุ่ม "เข้าเวร" บนแผงเข้าเวร
@@ -47,8 +46,6 @@ async function checkIn(discordUser) {
     time: displayTime,
   });
 
-  await queue.onCheckedIn(discordUser, member);
-
   return { ok: true, replyEmbed, logEmbed };
 }
 
@@ -90,8 +87,6 @@ async function checkOut(discordUser) {
     checkOut: displayCheckOut,
     hours,
   });
-
-  await queue.onCheckedOut(discordUser);
 
   return { ok: true, replyEmbed, logEmbed };
 }
