@@ -13,7 +13,7 @@ function adminPanelEmbed() {
       "ห้องนี้จำกัดเฉพาะแอดมิน — กดปุ่มด้านล่างแทนการพิมพ์คำสั่ง /\n\n" +
         "**ข้อมูล:** 📋 คนเข้าเวรตอนนี้ / 📊 สรุปสัปดาห์นี้ / 📁 ส่งออก CSV\n" +
         "**จัดการชั่วโมง/เวลา:** ➕ เพิ่ม / ➖ ลด / ✏️ แก้เวลา / 🧹 ล้างสถานะเวร\n" +
-        "**จัดการสมาชิก:** 🆕 เพิ่มสมาชิก / 🎖️ แก้ไขตำแหน่ง / 🗑️ ลบสมาชิก\n" +
+        "**จัดการสมาชิก:** 🆕 เพิ่มสมาชิก / 🎖️ แก้ไขตำแหน่ง / ✏️ แก้ไขชื่อ / 🗑️ ลบสมาชิก\n" +
         "**ระบบรายสัปดาห์:** 🧹 เคลียร์ฐานข้อมูลรายสัปดาห์ (สั่งเอง ไม่มีระบบอัตโนมัติ) / 📜 ประวัติสัปดาห์ก่อนหน้า"
     )
     .setFooter({ text: "POLICE DUTY SYSTEM • Admin Panel" })
@@ -37,6 +37,7 @@ function adminPanelRows() {
   const rowMembers = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId("ap_register").setLabel("เพิ่มสมาชิก").setEmoji("🆕").setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId("ap_setposition").setLabel("แก้ไขตำแหน่ง").setEmoji("🎖️").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId("ap_setname").setLabel("แก้ไขชื่อ").setEmoji("✏️").setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId("ap_removemember").setLabel("ลบสมาชิก").setEmoji("🗑️").setStyle(ButtonStyle.Danger)
   );
 

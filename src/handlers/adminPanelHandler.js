@@ -230,6 +230,7 @@ const USER_SELECT_META = {
   ap_edittime: { customId: "ap_select_edittime", placeholder: "เลือกสมาชิกที่จะแก้เวลา" },
   ap_clearduty: { customId: "ap_select_clearduty", placeholder: "เลือกสมาชิกที่จะล้างสถานะเวร" },
   ap_setposition: { customId: "ap_select_setposition_user", placeholder: "เลือกสมาชิกที่จะแก้ไขตำแหน่ง" },
+  ap_setname: { customId: "ap_select_setname_user", placeholder: "เลือกสมาชิกที่จะแก้ไขชื่อ" },
   ap_removemember: { customId: "ap_select_removemember_user", placeholder: "เลือกสมาชิกที่จะลบ" },
   ap_register: { customId: "ap_select_register_user", placeholder: "เลือกสมาชิกที่จะเพิ่ม" },
 };
@@ -250,6 +251,17 @@ function registerModal(targetId) {
   const nameInput = new TextInputBuilder()
     .setCustomId("gameName")
     .setLabel("ชื่อสมาชิก")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true);
+  modal.addComponents(new ActionRowBuilder().addComponents(nameInput));
+  return modal;
+}
+
+function setNameModal(targetId) {
+  const modal = new ModalBuilder().setCustomId(`ap_modal_setname:${targetId}`).setTitle("แก้ไขชื่อสมาชิก");
+  const nameInput = new TextInputBuilder()
+    .setCustomId("gameName")
+    .setLabel("ชื่อใหม่ในเกม")
     .setStyle(TextInputStyle.Short)
     .setRequired(true);
   modal.addComponents(new ActionRowBuilder().addComponents(nameInput));
@@ -405,6 +417,7 @@ async function handleUserSelect(interaction) {
   if (id === "ap_select_clearduty") return handleSelectClearDuty(interaction);
   if (id === "ap_select_register_user") return interaction.showModal(registerModal(targetId));
   if (id === "ap_select_setposition_user") return handleSelectMemberForSetPosition(interaction, targetId);
+  if (id === "ap_select_setname_user") return interaction.showModal(setNameModal(targetId));
   if (id === "ap_select_removemember_user") return handleSelectMemberForRemoveMember(interaction, targetId);
 }
 
@@ -790,6 +803,72 @@ async function handleModalRegister(interaction, targetId) {
   });
 }
 
+async function handleModalSetName(interaction, targetId) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  const newName = interaction.fields.getTextInputValue("gameName").trim();
+
+  const existing = await db.findMember(targetId);
+  if (!existing) {
+    return interaction.editReply({
+      embeds: [embeds.errorEmbed("ไม่พบสมาชิกไอดีนี้ในระบบแล้ว (อาจถูกลบไปก่อนหน้านี้)")],
+    });
+  }
+
+  if (!newName) {
+    return interaction.editReply({ embeds: [embeds.errorEmbed("กรุณาระบุชื่อใหม่")] });
+  }
+
+  const oldName = existing.gameName;
+  if (oldName === newName) {
+    return interaction.editReply({
+      embeds: [embeds.errorEmbed("ชื่อใหม่เหมือนกับชื่อเดิม กรุณาระบุชื่อที่แตกต่างออกไป")],
+    });
+  }
+
+  await db.updateMemberName(targetId, newName);
+  await roster.refreshRoster(interaction.client);
+
+  // เปลี่ยนชื่อเล่นในดิสคอร์ดให้ตรงกับชื่อใหม่
+  const nicknameResult = await setNickname(
+    interaction,
+    targetId,
+    embeds.memberNickname({ position: existing.position, gameName: newName })
+  );
+
+  const resultLines = [`เปลี่ยนชื่อของ ${oldName} (${existing.discordName}) เป็น "${newName}" เรียบร้อยแล้ว`];
+  if (nicknameResult?.ok) {
+    resultLines.push(`เปลี่ยนชื่อเล่นเป็น: ${nicknameResult.nickname}`);
+  } else if (nicknameResult && !nicknameResult.ok) {
+    resultLines.push(`⚠️ เปลี่ยนชื่อเล่นไม่สำเร็จ (${nicknameResult.reason}) กรุณาเปลี่ยนด้วยตนเอง`);
+  }
+
+  await interaction.editReply({ embeds: [embeds.successEmbed(resultLines.join("\n"))] });
+
+  const logFields = [
+    { name: "สมาชิก", value: existing.discordName, inline: true },
+    { name: "ชื่อเดิม", value: oldName || "-", inline: true },
+    { name: "ชื่อใหม่", value: newName, inline: true },
+  ];
+  if (nicknameResult?.ok) logFields.push({ name: "เปลี่ยนชื่อเล่น", value: nicknameResult.nickname, inline: false });
+
+  await sendLog(
+    interaction.client,
+    "แอดมิน",
+    embeds.adminActionEmbed("✏️ เปลี่ยนชื่อ", `แอดมิน ${interaction.user.tag} เปลี่ยนชื่อสมาชิก`, logFields)
+  );
+
+  if (nicknameResult && !nicknameResult.ok) {
+    await sendLog(
+      interaction.client,
+      "แอดมิน",
+      embeds.errorEmbed(
+        `เปลี่ยนชื่อเล่นให้ <@${targetId}> ตอนแก้ไขชื่อไม่สำเร็จ กรุณาเปลี่ยนด้วยตนเอง (เหตุผล: ${nicknameResult.reason})`
+      )
+    );
+  }
+}
+
 // ---------- ปุ่มยืนยัน/ยกเลิก การลบสมาชิก ----------
 
 async function handleRemoveMemberConfirm(interaction, discordId) {
@@ -846,6 +925,7 @@ async function handleModalSubmit(interaction) {
   if (action === "ap_modal_subhours") return handleModalSubHours(interaction, targetId);
   if (action === "ap_modal_edittime") return handleModalEditTime(interaction, targetId);
   if (action === "ap_modal_register") return handleModalRegister(interaction, targetId);
+  if (action === "ap_modal_setname") return handleModalSetName(interaction, targetId);
 }
 
 module.exports = {
