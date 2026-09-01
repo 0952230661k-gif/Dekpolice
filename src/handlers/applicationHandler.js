@@ -2,9 +2,15 @@ const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, Messag
 const db = require("../utils/db");
 const time = require("../utils/time");
 const embeds = require("../utils/embeds");
+const steamId = require("../utils/steamId");
 const config = require("../../config.json");
 const { isAdmin, sendLog } = require("../utils/permissions");
 const { setNickname, assignRoles } = require("../utils/discordSync");
+
+/** จัดรูปแบบ Steam Hex ที่คำนวณ/เก็บไว้แล้วให้อยู่ในโค้ดบล็อก หรือข้อความแจ้งถ้ายังไม่มีค่า */
+function formatSteamHex(steamHex) {
+  return steamHex ? `\`${steamHex}\`` : "ไม่พบ (ตรวจสอบลิงก์ Steam อีกครั้ง)";
+}
 
 function applicationModal(department) {
   const modal = new ModalBuilder()
@@ -113,6 +119,11 @@ async function handleModalSubmit(interaction) {
     });
   }
 
+  // แปลงลิงก์ Steam ที่กรอกเป็น Steam Hex ให้อัตโนมัติ (รองรับทั้งลิงก์ /profiles/ และลิงก์ vanity /id/)
+  // ถ้าแปลงไม่สำเร็จ (เช่น ลิงก์ผิดรูปแบบ) จะไม่ทำให้การสมัครล้มเหลว แค่เว้นค่า Steam Hex ไว้ให้แอดมินเช็คเอง
+  const steamHexResult = await steamId.resolveSteamId64(steamLink);
+  const steamHex = steamHexResult.ok ? steamId.steamId64ToHex(steamHexResult.steamId64) : null;
+
   const application = await db.addApplication({
     discordId: interaction.user.id,
     discordName: interaction.user.tag,
@@ -122,6 +133,7 @@ async function handleModalSubmit(interaction) {
     phone,
     examinerName,
     steamLink,
+    steamHex,
     createdAt: time.nowIso(),
   });
 
@@ -166,6 +178,7 @@ async function handleModalSubmit(interaction) {
       { name: "เบอร์ในเมือง", value: phone, inline: true },
       { name: "ชื่อผู้คุมสอบ", value: examinerName, inline: true },
       { name: "ลิงค์ Steam", value: steamLink, inline: true },
+      { name: "Steam Hex", value: formatSteamHex(steamHex), inline: true },
     ])
   );
 
@@ -256,6 +269,7 @@ async function handleDecision(interaction) {
     { name: "เบอร์ในเมือง", value: application.phone, inline: true },
     { name: "ชื่อผู้คุมสอบ", value: application.examinerName, inline: true },
     { name: "ลิงค์ Steam", value: application.steamLink, inline: true },
+    { name: "Steam Hex", value: formatSteamHex(application.steamHex), inline: true },
   ];
 
   if (roleResult) {

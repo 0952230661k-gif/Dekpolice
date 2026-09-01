@@ -104,6 +104,7 @@ const SCHEMA_STATEMENTS = [
     phone TEXT,
     examiner_name TEXT,
     steam_link TEXT,
+    steam_hex TEXT,
     status TEXT,
     reviewed_by TEXT,
     reviewed_at TEXT,
@@ -119,6 +120,7 @@ const APPLICATIONS_MIGRATION_COLUMNS = [
   { name: "phone", ddl: "ALTER TABLE applications ADD COLUMN phone TEXT" },
   { name: "examiner_name", ddl: "ALTER TABLE applications ADD COLUMN examiner_name TEXT" },
   { name: "steam_link", ddl: "ALTER TABLE applications ADD COLUMN steam_link TEXT" },
+  { name: "steam_hex", ddl: "ALTER TABLE applications ADD COLUMN steam_hex TEXT" },
 ];
 
 const ready = (async () => {
@@ -640,6 +642,7 @@ function rowToApplication(row) {
     phone: row.phone,
     examinerName: row.examiner_name,
     steamLink: row.steam_link,
+    steamHex: row.steam_hex,
     status: row.status,
     reviewedBy: row.reviewed_by,
     reviewedAt: row.reviewed_at,
@@ -661,8 +664,8 @@ async function findPendingApplication(discordId) {
 async function addApplication(entry) {
   await ready;
   const result = await client.execute({
-    sql: `INSERT INTO applications (discord_id, discord_name, department, game_name, age, phone, examiner_name, steam_link, status, created_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'รอตรวจสอบ', ?)`,
+    sql: `INSERT INTO applications (discord_id, discord_name, department, game_name, age, phone, examiner_name, steam_link, steam_hex, status, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'รอตรวจสอบ', ?)`,
     args: [
       entry.discordId,
       entry.discordName,
@@ -672,6 +675,7 @@ async function addApplication(entry) {
       entry.phone,
       entry.examinerName,
       entry.steamLink,
+      entry.steamHex || null,
       entry.createdAt,
     ],
   });

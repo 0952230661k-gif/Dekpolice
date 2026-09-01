@@ -1,6 +1,11 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
 const config = require("../../config.json");
 
+/** จัดรูปแบบ Steam Hex ที่คำนวณไว้แล้วตอนยื่นใบสมัคร ให้อยู่ในโค้ดบล็อก หรือข้อความแจ้งถ้ายังไม่มีค่า (เช่น ใบสมัครเก่าก่อนมีระบบนี้) */
+function formatSteamHex(steamHex) {
+  return steamHex ? `\`${steamHex}\`` : "ไม่พบ (ตรวจสอบลิงก์ Steam อีกครั้ง)";
+}
+
 // ---------- Helper: ชื่อแสดงผลของสมาชิก ----------
 function memberDisplayName({ gameName }) {
   return gameName;
@@ -360,6 +365,7 @@ function applicationReviewEmbed(app, reviewerTag) {
       { name: "เบอร์ในเมือง", value: app.phone || "-", inline: true },
       { name: "ชื่อผู้คุมสอบ", value: app.examinerName || "-", inline: true },
       { name: "ลิงค์ Steam", value: app.steamLink || "-", inline: true },
+      { name: "Steam Hex", value: formatSteamHex(app.steamHex), inline: true },
       { name: "Discord", value: app.discordId, inline: true }
     )
     .setFooter({ text: `Application #${app.id}` })
