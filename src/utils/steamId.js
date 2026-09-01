@@ -35,7 +35,10 @@ function isVanityUrl(input) {
 /**
  * พยายาม resolve อินพุตให้เป็น SteamID64
  * - ถ้าเป็นเลขดิบหรือลิงก์ /profiles/ อยู่แล้ว จะได้ผลลัพธ์ทันทีแบบไม่ต้องต่อเน็ต
- * - ถ้าเป็นลิงก์ /id/ชื่อ (vanity) จะดึงหน้าโปรไฟล์มาอ่านค่า SteamID64 ให้อัตโนมัติ
+ * - ถ้าเป็นลิงก์ /id/ชื่อ (vanity) จะใช้ endpoint XML อย่างเป็นทางการของ Steam (?xml=1)
+ *   เพื่ออ่านค่า SteamID64 แทนการแกะ HTML เอง เพราะ HTML ของหน้าโปรไฟล์มักมี "steamid" ของ
+ *   คนอื่นปนอยู่ด้วย (เช่น เพื่อน/โปรไฟล์แนะนำ) ทำให้แกะผิดคนได้ ส่วน endpoint XML นี้ Valve
+ *   ทำมาให้ resolve vanity URL โดยเฉพาะ จึงแม่นยำกว่ามาก
  * คืนค่า { ok: true, steamId64 } หรือ { ok: false, reason }
  */
 async function resolveSteamId64(input) {
@@ -48,19 +51,24 @@ async function resolveSteamId64(input) {
 
   if (isVanityUrl(input)) {
     try {
-      const url = String(input).trim();
-      const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
+      const url = String(input).trim().replace(/\/+$/, "");
+      const xmlUrl = `${url}?xml=1`;
+      const res = await fetch(xmlUrl, { headers: { "User-Agent": "Mozilla/5.0" } });
       if (!res.ok) {
         return { ok: false, reason: `เปิดลิงก์ไม่สำเร็จ (HTTP ${res.status})` };
       }
-      const html = await res.text();
-      const fromCanonical = html.match(/steamcommunity\.com\/profiles\/(7656\d{13})/i);
-      const fromScript = html.match(/"steamid":"(7656\d{13})"/i);
-      const steamId64 = (fromCanonical && fromCanonical[1]) || (fromScript && fromScript[1]) || null;
-      if (!steamId64) {
-        return { ok: false, reason: "ไม่พบ SteamID64 ในหน้าโปรไฟล์ (โปรไฟล์อาจตั้งค่าความเป็นส่วนตัวไว้)" };
+      const xml = await res.text();
+
+      if (/<error>/i.test(xml)) {
+        const errMatch = xml.match(/<error>([\s\S]*?)<\/error>/i);
+        return { ok: false, reason: errMatch ? errMatch[1].trim() : "ไม่พบโปรไฟล์นี้ กรุณาตรวจสอบลิงก์อีกครั้ง" };
       }
-      return { ok: true, steamId64 };
+
+      const idMatch = xml.match(/<steamID64>(\d{17})<\/steamID64>/i);
+      if (!idMatch) {
+        return { ok: false, reason: "ไม่พบ SteamID64 จากลิงก์นี้ กรุณาตรวจสอบลิงก์อีกครั้ง" };
+      }
+      return { ok: true, steamId64: idMatch[1] };
     } catch (err) {
       return { ok: false, reason: `ดึงข้อมูลจากลิงก์ไม่สำเร็จ: ${err.message}` };
     }
