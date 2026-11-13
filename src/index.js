@@ -109,22 +109,34 @@ client.on("interactionCreate", async (interaction) => {
       return;
     }
 
-    if (interaction.customId === "duty_afk") {
+    if (interaction.customId === "duty_afk" || interaction.customId === "duty_back") {
       try {
+        const goAfk = interaction.customId === "duty_afk";
         const open = await db.findOpenDuty(interaction.user.id);
         if (!open) {
-          return interaction.reply({ embeds: [embeds.errorEmbed("ต้องเข้าเวรก่อน จึงจะสลับสถานะไม่อยู่หน้าจอได้")], ephemeral: true });
+          return interaction.reply({ embeds: [embeds.errorEmbed("ต้องเข้าเวรก่อน จึงจะใช้ปุ่ม วอ.12 / วอ.4 ได้")], ephemeral: true });
         }
-        const afkIds = await db.getAfkIds();
-        const nowAfk = !afkIds.includes(interaction.user.id);
-        await db.setAfk(interaction.user.id, nowAfk);
+        const isAfk = (await db.getAfkIds()).includes(interaction.user.id);
+        if (goAfk === isAfk) {
+          return interaction.reply({
+            embeds: [embeds.errorEmbed(goAfk ? "คุณอยู่สถานะ วอ.12 (ไม่อยู่หน้าจอ) อยู่แล้ว" : "คุณอยู่ในสถานะเข้าเวรปกติอยู่แล้ว")],
+            ephemeral: true,
+          });
+        }
+        await db.setAfk(interaction.user.id, goAfk);
         await panel.refreshPanel(interaction.client);
         await interaction.reply({
-          embeds: [embeds.successEmbed(nowAfk ? "ตั้งสถานะ ไม่อยู่หน้าจอ แล้ว" : "กลับมาอยู่หน้าจอแล้ว")],
+          embeds: [
+            embeds.successEmbed(
+              goAfk
+                ? "ตั้งสถานะ วอ.12 (ไม่อยู่หน้าจอ) แล้ว — เวลายังเดินปกติ แต่ all จะไม่แท็กคุณ"
+                : "วอ.4 กลับมาเข้าเวรแล้ว"
+            ),
+          ],
           ephemeral: true,
         });
       } catch (err) {
-        console.error("เกิดข้อผิดพลาดขณะสลับสถานะไม่อยู่หน้าจอ:", err);
+        console.error("เกิดข้อผิดพลาดขณะสลับสถานะ วอ.12/วอ.4:", err);
         await safeErrorReply(interaction);
       }
       return;

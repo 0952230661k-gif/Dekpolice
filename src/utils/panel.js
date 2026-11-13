@@ -1,15 +1,29 @@
 const db = require("./db");
 const embeds = require("./embeds");
+const time = require("./time");
+
+/** ข้อมูลที่แผงต้องใช้: คนเข้าเวร, คน AFK, จำนวนคนที่ออกเวรแล้ววันนี้ */
+async function panelState() {
+  const onDutyList = await db.getAllOpenDuty();
+  const afkIds = await db.getAfkIds();
+  const logs = await db.getDutyLogs();
+  const today = time.todayStr();
+  const offToday = new Set(
+    logs
+      .filter((l) => l.status === "ออกเวร" && l.checkOut && l.checkOut !== "-" && time.isSameDay(l.checkOut, today))
+      .map((l) => l.discordId)
+  ).size;
+  return { onDutyList, afkIds, offToday };
+}
 
 /**
  * โพสต์แผงเข้าเวรใหม่ในห้องที่ระบุ และบันทึกตำแหน่งข้อความไว้ใน DB
  * เพื่อให้บอทหาข้อความนี้เจอและอัปเดตสดได้ทุกครั้งที่มีคนเข้า/ออกเวร
  */
 async function postPanel(channel) {
-  const onDutyList = await db.getAllOpenDuty();
-  const afkIds = await db.getAfkIds();
+  const { onDutyList, afkIds, offToday } = await panelState();
   const message = await channel.send({
-    embeds: embeds.dutyPanelEmbeds(onDutyList, afkIds),
+    embeds: embeds.dutyPanelEmbeds(onDutyList, afkIds, offToday),
     components: [embeds.dutyPanelRow()],
   });
   await db.setPanelMessage(channel.id, message.id);
@@ -30,10 +44,9 @@ async function refreshPanel(client) {
     const message = await channel.messages.fetch(panel.messageId);
     if (!message) return;
 
-    const onDutyList = await db.getAllOpenDuty();
-    const afkIds = await db.getAfkIds();
+    const { onDutyList, afkIds, offToday } = await panelState();
     await message.edit({
-      embeds: embeds.dutyPanelEmbeds(onDutyList, afkIds),
+      embeds: embeds.dutyPanelEmbeds(onDutyList, afkIds, offToday),
       components: [embeds.dutyPanelRow()],
     });
   } catch (err) {

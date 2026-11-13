@@ -1,6 +1,6 @@
 {
   "adminRoleIds": [
-    "1570922869351915590"
+    "1532471768768315591"
   ],
   "logChannels": {
     "สมัคร": "ใส่_CHANNEL_ID",
@@ -11,8 +11,8 @@
     "ทะเบียน": "ใส่_CHANNEL_ID",
     "ใบสมัคร": "ใส่_CHANNEL_ID"
   },
-  "applicationChannelId": "1552817736722157690",
-  "caseChannelId": "1552131773469560924",
+  "applicationChannelId": "1539402546852921424",
+  "caseChannelId": "ใส่_CHANNEL_ID_ห้องบันทึกคดี",
   "caseBannerUrl": "",
   "dutyChannelId": "1532468587112042678",
   "autoRoleIds": [

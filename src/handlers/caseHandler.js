@@ -46,7 +46,9 @@ async function parseCaseText(text, ownerId) {
   }
 
   if (wantAll) {
-    for (const d of await db.getAllOpenDuty()) ids.add(d.discordId);
+    // all = ทุกคนที่เข้าเวรอยู่ (ไม่รวมคนที่อยู่ วอ.12) ยกเว้นคนที่ตั้งสถานะ วอ.12 (ไม่อยู่หน้าจอ)
+    const afk = new Set(await db.getAfkIds());
+    for (const d of await db.getAllOpenDuty()) if (!afk.has(d.discordId)) ids.add(d.discordId);
   }
   if (wantSame) {
     const last = await db.getLastCaseByOwner(ownerId);

@@ -152,43 +152,32 @@ function adminActionEmbed(title, description, fields = []) {
 
 // ---------- แผงเข้าเวร (ปุ่มเข้าเวร/ออกเวรแบบข้อความปักหมุด) ----------
 
-function dutyPanelEmbeds(onDutyList = [], afkIds = []) {
+function dutyPanelEmbeds(onDutyList = [], afkIds = [], offDutyToday = 0) {
   const afkSet = new Set(afkIds);
   const active = onDutyList.filter((d) => !afkSet.has(d.discordId));
   const away = onDutyList.filter((d) => afkSet.has(d.discordId));
   const mentionList = (list, emptyText) =>
-    list.length > 0 ? list.map((d) => `> <@${d.discordId}>`).join("\n") : `*${emptyText}*`;
+    list.length > 0 ? list.map((d) => `> <@${d.discordId}>`).join("\n") : `-# ${emptyText}`;
 
   return [
     new EmbedBuilder()
-      .setColor(active.length > 0 ? 0x57f287 : 0x3b3f47)
+      .setColor(0x57f287)
       .setTitle("📋 บันทึกการทำงาน")
       .setDescription(
-        `🟢 **กำลังเข้าเวร · ${active.length} คน**\n${mentionList(active, "ไม่มีใครเข้าเวรในขณะนี้")}\n\n` +
-          `💤 **ไม่อยู่หน้าจอ · ${away.length} คน**\n${mentionList(away, "ไม่มี")}`
-      )
-      .setFooter({ text: "POLICE DUTY SYSTEM • กดปุ่มด้านล่างเพื่อเข้า/ออกเวร หรือสลับสถานะไม่อยู่หน้าจอ" })
-      .setTimestamp(),
+        `### 🟢 กำลังเข้าเวร · ${active.length} คน\n${mentionList(active, "ไม่มี")}\n` +
+          `### 📻 วอ.12 — ไม่อยู่หน้าจอ · ${away.length} คน\n${mentionList(away, "ไม่มี")}\n` +
+          `-# 📕 ออกเวรแล้ววันนี้ ${offDutyToday} คน · อัปเดตล่าสุด <t:${Math.floor(Date.now() / 1000)}:R>\n` +
+          `-# วอ.12 = ไม่อยู่หน้าจอ · วอ.4 = กลับมาเข้าเวร · เวลายังเดินปกติ แต่ \`all\` จะไม่แท็กให้`
+      ),
   ];
 }
 
 function dutyPanelRow() {
   return new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId("duty_checkin")
-      .setLabel("เข้าเวร")
-      .setEmoji("🟢")
-      .setStyle(ButtonStyle.Success),
-    new ButtonBuilder()
-      .setCustomId("duty_checkout")
-      .setLabel("ออกเวร")
-      .setEmoji("🔴")
-      .setStyle(ButtonStyle.Danger),
-    new ButtonBuilder()
-      .setCustomId("duty_afk")
-      .setLabel("ไม่อยู่หน้าจอ")
-      .setEmoji("💤")
-      .setStyle(ButtonStyle.Secondary)
+    new ButtonBuilder().setCustomId("duty_checkin").setLabel("เข้าเวร").setEmoji("🟢").setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId("duty_checkout").setLabel("ออกเวร").setEmoji("🔴").setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId("duty_afk").setLabel("วอ.12").setEmoji("📻").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId("duty_back").setLabel("วอ.4").setEmoji("✅").setStyle(ButtonStyle.Primary)
   );
 }
 
