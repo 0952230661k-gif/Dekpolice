@@ -12,6 +12,8 @@
     "ใบสมัคร": "ใส่_CHANNEL_ID"
   },
   "applicationChannelId": "1539402546852921424",
+  "caseChannelId": "ใส่_CHANNEL_ID_ห้องบันทึกคดี",
+  "caseBannerUrl": "",
   "dutyChannelId": "1532468587112042678",
   "autoRoleIds": [
     "1539671714097664080",

@@ -7,8 +7,9 @@ const embeds = require("./embeds");
  */
 async function postPanel(channel) {
   const onDutyList = await db.getAllOpenDuty();
+  const afkIds = await db.getAfkIds();
   const message = await channel.send({
-    embeds: embeds.dutyPanelEmbeds(onDutyList),
+    embeds: embeds.dutyPanelEmbeds(onDutyList, afkIds),
     components: [embeds.dutyPanelRow()],
   });
   await db.setPanelMessage(channel.id, message.id);
@@ -30,8 +31,9 @@ async function refreshPanel(client) {
     if (!message) return;
 
     const onDutyList = await db.getAllOpenDuty();
+    const afkIds = await db.getAfkIds();
     await message.edit({
-      embeds: embeds.dutyPanelEmbeds(onDutyList),
+      embeds: embeds.dutyPanelEmbeds(onDutyList, afkIds),
       components: [embeds.dutyPanelRow()],
     });
   } catch (err) {

@@ -10,9 +10,16 @@ const { sendLog } = require("./utils/permissions");
 const adminPanelHandler = require("./handlers/adminPanelHandler");
 const plateHandler = require("./handlers/plateHandler");
 const applicationHandler = require("./handlers/applicationHandler");
+const caseHandler = require("./handlers/caseHandler");
+const db = require("./utils/db");
 
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent, // ต้องเปิด MESSAGE CONTENT INTENT ใน Developer Portal ด้วย (ใช้อ่านข้อความในห้องบันทึกคดี)
+  ],
 });
 
 client.commands = new Collection();
@@ -40,6 +47,14 @@ client.once("ready", async () => {
   await applicationPanel.refreshApplicationPanel(client); // ซิงก์แผงสมัครที่ปักไว้ให้ตรงกับ config ล่าสุด
   // หมายเหตุ: ระบบเคลียร์ฐานข้อมูลรายสัปดาห์ (weeklyReset) เป็นแบบแอดมินสั่งเองเท่านั้น
   // (ผ่านคำสั่ง /เคลียร์ฐานข้อมูลรายสัปดาห์ หรือปุ่มในแผงแอดมิน) จึงไม่มีการรันอัตโนมัติตอนบอทเริ่มทำงาน
+});
+
+client.on("messageCreate", async (message) => {
+  try {
+    await caseHandler.handleMessage(message);
+  } catch (err) {
+    console.error("เกิดข้อผิดพลาดในระบบบันทึกคดี:", err);
+  }
 });
 
 client.on("interactionCreate", async (interaction) => {
@@ -90,6 +105,37 @@ client.on("interactionCreate", async (interaction) => {
         } else {
           await interaction.reply({ ...errorReply, ephemeral: true }).catch(() => {});
         }
+      }
+      return;
+    }
+
+    if (interaction.customId === "duty_afk") {
+      try {
+        const open = await db.findOpenDuty(interaction.user.id);
+        if (!open) {
+          return interaction.reply({ embeds: [embeds.errorEmbed("ต้องเข้าเวรก่อน จึงจะสลับสถานะไม่อยู่หน้าจอได้")], ephemeral: true });
+        }
+        const afkIds = await db.getAfkIds();
+        const nowAfk = !afkIds.includes(interaction.user.id);
+        await db.setAfk(interaction.user.id, nowAfk);
+        await panel.refreshPanel(interaction.client);
+        await interaction.reply({
+          embeds: [embeds.successEmbed(nowAfk ? "ตั้งสถานะ ไม่อยู่หน้าจอ แล้ว" : "กลับมาอยู่หน้าจอแล้ว")],
+          ephemeral: true,
+        });
+      } catch (err) {
+        console.error("เกิดข้อผิดพลาดขณะสลับสถานะไม่อยู่หน้าจอ:", err);
+        await safeErrorReply(interaction);
+      }
+      return;
+    }
+
+    if (interaction.customId.startsWith("case_")) {
+      try {
+        await caseHandler.handleButton(interaction);
+      } catch (err) {
+        console.error(`เกิดข้อผิดพลาดในระบบบันทึกคดี (ปุ่ม ${interaction.customId}):`, err);
+        await safeErrorReply(interaction);
       }
       return;
     }
@@ -150,6 +196,16 @@ client.on("interactionCreate", async (interaction) => {
       await adminPanelHandler.handleModalSubmit(interaction);
     } catch (err) {
       console.error(`เกิดข้อผิดพลาดในแผงแอดมิน (modal ${interaction.customId}):`, err);
+      await safeErrorReply(interaction);
+    }
+    return;
+  }
+
+  if (interaction.isModalSubmit() && interaction.customId.startsWith("case_modal_")) {
+    try {
+      await caseHandler.handleModalSubmit(interaction);
+    } catch (err) {
+      console.error(`เกิดข้อผิดพลาดในระบบบันทึกคดี (modal ${interaction.customId}):`, err);
       await safeErrorReply(interaction);
     }
     return;

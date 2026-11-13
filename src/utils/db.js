@@ -112,6 +112,24 @@ const SCHEMA_STATEMENTS = [
     review_message_id TEXT,
     created_at TEXT
   )`,
+  `CREATE TABLE IF NOT EXISTS cases (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    channel_id TEXT,
+    message_id TEXT,
+    owner_id TEXT,
+    title TEXT,
+    fine INTEGER,
+    participants TEXT,
+    image_name TEXT,
+    created_at TEXT,
+    status TEXT DEFAULT 'active',
+    cancelled_by TEXT,
+    cancelled_at TEXT,
+    cancel_reason TEXT
+  )`,
+  `CREATE TABLE IF NOT EXISTS afk_status (
+    discord_id TEXT PRIMARY KEY
+  )`,
 ];
 
 // รายการคอลัมน์ที่อาจต้องเพิ่มเข้า applications ถ้าฐานข้อมูลเดิมถูกสร้างไว้ก่อนที่จะมีฟิลด์เหล่านี้
@@ -121,6 +139,11 @@ const APPLICATIONS_MIGRATION_COLUMNS = [
   { name: "examiner_name", ddl: "ALTER TABLE applications ADD COLUMN examiner_name TEXT" },
   { name: "steam_link", ddl: "ALTER TABLE applications ADD COLUMN steam_link TEXT" },
   { name: "steam_hex", ddl: "ALTER TABLE applications ADD COLUMN steam_hex TEXT" },
+  // คอลัมน์ของตาราง cases (กรณีสร้างตารางไว้ก่อนมีระบบยกเลิกเคส)
+  { name: "cases.status", ddl: "ALTER TABLE cases ADD COLUMN status TEXT DEFAULT 'active'" },
+  { name: "cases.cancelled_by", ddl: "ALTER TABLE cases ADD COLUMN cancelled_by TEXT" },
+  { name: "cases.cancelled_at", ddl: "ALTER TABLE cases ADD COLUMN cancelled_at TEXT" },
+  { name: "cases.cancel_reason", ddl: "ALTER TABLE cases ADD COLUMN cancel_reason TEXT" },
 ];
 
 const ready = (async () => {
@@ -710,7 +733,114 @@ async function decideApplication(id, status, reviewerId, reviewedAt) {
   return getApplication(id);
 }
 
+// ---------- Cases (บันทึกคดี) ----------
+
+function rowToCase(row) {
+  if (!row) return null;
+  let participants = [];
+  try { participants = JSON.parse(row.participants || "[]"); } catch { participants = []; }
+  return {
+    id: Number(row.id),
+    channelId: row.channel_id,
+    messageId: row.message_id,
+    ownerId: row.owner_id,
+    title: row.title,
+    fine: row.fine == null ? null : Number(row.fine),
+    participants,
+    imageName: row.image_name,
+    createdAt: row.created_at,
+    status: row.status || "active",
+    cancelledBy: row.cancelled_by || null,
+    cancelledAt: row.cancelled_at || null,
+    cancelReason: row.cancel_reason || null,
+  };
+}
+
+async function addCase(c) {
+  await ready;
+  const res = await client.execute({
+    sql: `INSERT INTO cases (channel_id, message_id, owner_id, title, fine, participants, image_name, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    args: [c.channelId, c.messageId, c.ownerId, c.title, c.fine, JSON.stringify(c.participants), c.imageName || null, c.createdAt],
+  });
+  return Number(res.lastInsertRowid);
+}
+
+async function setCaseMessage(id, messageId) {
+  await ready;
+  await client.execute({ sql: "UPDATE cases SET message_id = ? WHERE id = ?", args: [messageId, id] });
+}
+
+async function getCaseByMessage(messageId) {
+  await ready;
+  const { rows } = await client.execute({ sql: "SELECT * FROM cases WHERE message_id = ?", args: [messageId] });
+  return rowToCase(rows[0]);
+}
+
+async function updateCase(id, { title, fine, participants }) {
+  await ready;
+  await client.execute({
+    sql: "UPDATE cases SET title = ?, fine = ?, participants = ? WHERE id = ?",
+    args: [title, fine, JSON.stringify(participants), id],
+  });
+}
+
+async function cancelCase(id, cancelledBy, reason, cancelledAt) {
+  await ready;
+  await client.execute({
+    sql: "UPDATE cases SET status = 'cancelled', cancelled_by = ?, cancel_reason = ?, cancelled_at = ? WHERE id = ?",
+    args: [cancelledBy, reason, cancelledAt, id],
+  });
+}
+
+async function getAllCases() {
+  await ready;
+  const { rows } = await client.execute("SELECT * FROM cases WHERE message_id != 'pending' ORDER BY id");
+  return rows.map(rowToCase);
+}
+
+async function getLastCaseByOwner(ownerId) {
+  await ready;
+  const { rows } = await client.execute({
+    sql: "SELECT * FROM cases WHERE owner_id = ? AND status = 'active' AND message_id != 'pending' ORDER BY id DESC LIMIT 1",
+    args: [ownerId],
+  });
+  return rowToCase(rows[0]);
+}
+
+async function deleteCase(id) {
+  await ready;
+  await client.execute({ sql: "DELETE FROM cases WHERE id = ?", args: [id] });
+}
+
+// ---------- AFK (ไม่อยู่หน้าจอ) ----------
+
+async function getAfkIds() {
+  await ready;
+  const { rows } = await client.execute("SELECT discord_id FROM afk_status");
+  return rows.map((r) => r.discord_id);
+}
+
+async function setAfk(discordId, isAfk) {
+  await ready;
+  if (isAfk) {
+    await client.execute({ sql: "INSERT OR IGNORE INTO afk_status (discord_id) VALUES (?)", args: [discordId] });
+  } else {
+    await client.execute({ sql: "DELETE FROM afk_status WHERE discord_id = ?", args: [discordId] });
+  }
+}
+
 module.exports = {
+  addCase,
+  cancelCase,
+  getAllCases,
+  getLastCaseByOwner,
+  setCaseMessage,
+  getCaseByMessage,
+  updateCase,
+  deleteCase,
+  getAfkIds,
+  setAfk,
   findMember,
   addMember,
   getAllMembers,

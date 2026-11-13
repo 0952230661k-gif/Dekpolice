@@ -21,6 +21,7 @@ async function checkIn(discordUser) {
     return { ok: false, embed: embeds.errorEmbed("คุณกำลังเข้าเวรอยู่แล้ว กรุณาออกเวรก่อนเข้าเวรครั้งใหม่") };
   }
 
+  await db.setAfk(discordId, false);
   const nowIso = time.nowIso();
   await db.addCheckIn({
     discordId,
@@ -65,6 +66,7 @@ async function checkOut(discordUser) {
   const hours = time.hoursBetween(openDuty.checkIn, checkOutIso);
 
   await db.setCheckOut(openDuty._rowNumber, checkOutIso, hours);
+  await db.setAfk(discordId, false);
 
   const member = await db.findMember(discordId);
   const displayCheckIn = time.displayDateTime(openDuty.checkIn);

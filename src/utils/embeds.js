@@ -152,31 +152,24 @@ function adminActionEmbed(title, description, fields = []) {
 
 // ---------- แผงเข้าเวร (ปุ่มเข้าเวร/ออกเวรแบบข้อความปักหมุด) ----------
 
-function dutyPanelEmbeds(onDutyList = []) {
-  const count = onDutyList.length;
-  const statusColor = count > 0 ? 0x57f287 : 0x3b3f47;
-  const statusDot = count > 0 ? "🟢" : "⚪";
+function dutyPanelEmbeds(onDutyList = [], afkIds = []) {
+  const afkSet = new Set(afkIds);
+  const active = onDutyList.filter((d) => !afkSet.has(d.discordId));
+  const away = onDutyList.filter((d) => afkSet.has(d.discordId));
+  const mentionList = (list, emptyText) =>
+    list.length > 0 ? list.map((d) => `> <@${d.discordId}>`).join("\n") : `*${emptyText}*`;
 
-  const headerEmbed = new EmbedBuilder()
-    .setColor(0x5865f2)
-    .setTitle("🚑 ระบบลงเวลาเข้าเวร");
-
-  const infoEmbed = new EmbedBuilder()
-    .setColor(0x5865f2)
-    .setDescription("กดปุ่มด้านล่างเพื่อเข้า/ออกเวร");
-
-  const listText =
-    count > 0
-      ? onDutyList.map((d) => `\`${d.name}\``).join("\n")
-      : "ไม่มีใครเข้าเวรในขณะนี้";
-
-  const statusEmbed = new EmbedBuilder()
-    .setColor(statusColor)
-    .setDescription(`${statusDot} **กำลังเข้าเวร (${count} คน)**\n${listText}`)
-    .setFooter({ text: "POLICE DUTY SYSTEM • Duty System" })
-    .setTimestamp();
-
-  return [headerEmbed, infoEmbed, statusEmbed];
+  return [
+    new EmbedBuilder()
+      .setColor(active.length > 0 ? 0x57f287 : 0x3b3f47)
+      .setTitle("📋 บันทึกการทำงาน")
+      .setDescription(
+        `🟢 **กำลังเข้าเวร · ${active.length} คน**\n${mentionList(active, "ไม่มีใครเข้าเวรในขณะนี้")}\n\n` +
+          `💤 **ไม่อยู่หน้าจอ · ${away.length} คน**\n${mentionList(away, "ไม่มี")}`
+      )
+      .setFooter({ text: "POLICE DUTY SYSTEM • กดปุ่มด้านล่างเพื่อเข้า/ออกเวร หรือสลับสถานะไม่อยู่หน้าจอ" })
+      .setTimestamp(),
+  ];
 }
 
 function dutyPanelRow() {
@@ -190,8 +183,101 @@ function dutyPanelRow() {
       .setCustomId("duty_checkout")
       .setLabel("ออกเวร")
       .setEmoji("🔴")
-      .setStyle(ButtonStyle.Danger)
+      .setStyle(ButtonStyle.Danger),
+    new ButtonBuilder()
+      .setCustomId("duty_afk")
+      .setLabel("ไม่อยู่หน้าจอ")
+      .setEmoji("💤")
+      .setStyle(ButtonStyle.Secondary)
   );
+}
+
+// ---------- บันทึกคดี ----------
+
+function caseEmbed(c, { ownerName, ownerAvatarUrl, imageName } = {}) {
+  const cancelled = c.status === "cancelled";
+  const fineText = c.fine ? `💵 **${c.fine.toLocaleString("en-US")}**` : "💵 **-**";
+  const partners =
+    c.participants.length > 0 ? c.participants.map((id) => `<@${id}>`).join(" · ") : "*ไม่มี*";
+
+  let description =
+    `👮 <@${c.ownerId}> · ${fineText}\n` +
+    `🤝 **ผู้ช่วยเหลือ · ${c.participants.length} คน**\n${partners}`;
+
+  if (cancelled) {
+    const unix = Math.floor(new Date(c.cancelledAt).getTime() / 1000);
+    description +=
+      `\n\n🚫 **ยกเลิกโดย** <@${c.cancelledBy}> เมื่อ <t:${unix}:f>\n` +
+      `📝 **เหตุผล**\n> ${c.cancelReason || "-"}`;
+  }
+
+  const created = new Date(c.createdAt || Date.now());
+  const dateText = `${String(created.getDate()).padStart(2, "0")}/${String(created.getMonth() + 1).padStart(2, "0")}/${created.getFullYear()}`;
+
+  const embed = new EmbedBuilder()
+    .setColor(cancelled ? 0xed4245 : 0x57f287)
+    .setAuthor({ name: ownerName || "เจ้าหน้าที่" })
+    .setTitle(cancelled ? `❌ ยกเลิกแล้ว · ${c.title}` : `📌 บันทึกคดี: ${c.title}`)
+    .setDescription(description)
+    .setFooter({ text: cancelled ? `${dateText} · เคสนี้ไม่ถูกนับแล้ว` : `คดีที่ #${c.id} · ${dateText}` });
+  if (ownerAvatarUrl) embed.setThumbnail(ownerAvatarUrl);
+  if (imageName) embed.setImage(`attachment://${imageName}`);
+  return embed;
+}
+
+function caseRow() {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId("case_edit").setLabel("แก้ไข").setEmoji("✏️").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId("case_cancel").setLabel("ยกเลิกเคส").setEmoji("🚫").setStyle(ButtonStyle.Danger)
+  );
+}
+
+// ---------- แผงระบบส่งเคส (Case Report) ----------
+
+function casePanelEmbed() {
+  const embed = new EmbedBuilder()
+    .setColor(0x00b0f4)
+    .setTitle("📋 ระบบส่งเคส | Case Report")
+    .setDescription(
+      "ทำคดีเสร็จแล้ว **พิมพ์ 3 บรรทัดนี้พร้อมแนบรูป** ลงในห้องได้เลย\nไม่ต้องพิมพ์คำนำหน้าอะไรทั้งสิ้น\n" +
+        "```\nปืน หลบหนี\n1450\n@คนที่มาช่วย\n```\n" +
+        "> **บรรทัด 1** ชื่อคดี · **บรรทัด 2** ค่าปรับ · **บรรทัด 3** แท็กคนช่วย\n" +
+        "> ไม่มีค่าปรับหรือไม่มีคนช่วย ข้ามบรรทัดไปได้เลย\n" +
+        "> พิมพ์ `all` แทนบรรทัด 3 = แท็กทุกคนที่กำลังเข้าเวรอยู่\n" +
+        "> พิมพ์ `เดิม` แทนบรรทัด 3 = ใช้ทีมเดียวกับเคสล่าสุดที่คุณส่ง"
+    )
+    .setFooter({ text: "ℹ️ ดูเวรกับเคสของตัวเอง · 🔒 ยอดเคสทุกคน เฉพาะแอดมิน · casebot v1.1" });
+  if (config.caseBannerUrl) embed.setImage(config.caseBannerUrl);
+  return embed;
+}
+
+function casePanelRow() {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId("case_info").setLabel("ข้อมูลของฉัน").setEmoji("ℹ️").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId("case_rank").setLabel("อันดับเคส").setEmoji("🏆").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId("case_all").setLabel("ยอดเคสทุกคน").setEmoji("📊").setStyle(ButtonStyle.Secondary)
+  );
+}
+
+/** หน้า "ข้อมูลการทำงาน" ของตัวเอง (ส่งแบบเห็นคนเดียว) */
+function workInfoEmbed({ displayName, avatarUrl, statusText, tenureDays, hours, cases, fmt }) {
+  const embed = new EmbedBuilder()
+    .setColor(0x00b0f4)
+    .setTitle("ℹ️ ข้อมูลการทำงาน")
+    .setDescription(
+      `**สรุปข้อมูลของ ${displayName} ในปัจจุบัน**\n` +
+        `> สถานะ: ${statusText}\n> อายุงาน: \`${tenureDays}\` วัน\n\n` +
+        `🕐 **เวลาการทำงาน**\n` +
+        `> วันนี้: \`${fmt(hours.hoursToday)}\`\n> สัปดาห์นี้: \`${fmt(hours.hoursWeek)}\`\n> สะสมเดือนนี้: \`${fmt(hours.hoursMonth)}\`\n\n` +
+        `🏆 **เคสสัปดาห์นี้**\n` +
+        `> ทำเอง: \`${cases.weekOwn}\` เคส\n> ช่วยเหลือ: \`${cases.weekHelped}\` เคส\n> รวม: \`${cases.weekTotal}\` เคส\n\n` +
+        `📈 **สะสม**\n` +
+        `> เคสเดือนนี้: \`${cases.monthTotal}\` เคส\n> เคสรวม: \`${cases.total}\` เคส\n> ค่าปรับรวม: \`${cases.totalFine.toLocaleString("en-US")}\` ฿`
+    )
+    .setFooter({ text: "เคสนับรอบสัปดาห์ตัดคืนวันเสาร์ 23:59 น." })
+    .setTimestamp();
+  if (avatarUrl) embed.setThumbnail(avatarUrl);
+  return embed;
 }
 
 // ---------- ห้องรายชื่อ (รายชื่อสมาชิกแยกตามตำแหน่ง) ----------
@@ -427,6 +513,11 @@ module.exports = {
   successEmbed,
   dutyPanelEmbeds,
   dutyPanelRow,
+  caseEmbed,
+  caseRow,
+  casePanelEmbed,
+  casePanelRow,
+  workInfoEmbed,
   rosterEmbeds,
   plateSubmitPanelEmbeds,
   plateSubmitRow,
