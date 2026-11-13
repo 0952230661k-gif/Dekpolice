@@ -56,7 +56,14 @@ async function parseCaseText(text, ownerId) {
   }
   ids.delete(ownerId);
 
-  return { title, fine, participants: [...ids] };
+  // ต้องมีชื่อในรายชื่อ (ตาราง members) เท่านั้น — คนที่ไม่อยู่ในรายชื่อจะถูกแยกไว้ใน unregistered
+  const participants = [];
+  const unregistered = [];
+  for (const id of ids) {
+    if (await db.findMember(id)) participants.push(id);
+    else unregistered.push(id);
+  }
+  return { title, fine, participants, unregistered };
 }
 
 async function ownerInfo(guild, ownerId) {
@@ -74,7 +81,22 @@ async function handleMessage(message) {
   if (!channelId || channelId.startsWith("ใส่_")) return;
   if (message.author.bot || message.channelId !== channelId || !message.guild) return;
 
+  const tempReply = async (text) => {
+    const warn = await message.reply({ content: text, allowedMentions: { parse: [] } }).catch(() => null);
+    if (warn) setTimeout(() => warn.delete().catch(() => {}), 20000);
+  };
+
+  // เจ้าของเคสต้องอยู่ในรายชื่อ ไม่งั้นส่งเคสไม่ได้ (ไม่ลบข้อความเดิม เพื่อให้แก้แล้วส่งใหม่ได้)
+  if (!(await db.findMember(message.author.id))) {
+    return tempReply("❌ คุณยังไม่มีชื่อในรายชื่อ จึงส่งเคสไม่ได้ กรุณาติดต่อแอดมินเพื่อเพิ่มชื่อก่อน");
+  }
+
   const parsed = await parseCaseText(message.content, message.author.id);
+  if (parsed.unregistered.length > 0) {
+    return tempReply(
+      `❌ ส่งเคสไม่ได้ มีคนที่ไม่อยู่ในรายชื่อ: ${parsed.unregistered.map((id) => `<@${id}>`).join(" ")}\nแท็กเฉพาะคนที่มีชื่อในรายชื่อเท่านั้น หรือให้แอดมินเพิ่มชื่อก่อน`
+    );
+  }
   if (!parsed.title) {
     const warn = await message.reply("⚠️ ต้องพิมพ์ชื่อคดีในบรรทัดแรก\n```\nชื่อคดี\nค่าปรับ (ไม่ใส่ก็ได้)\n@เพื่อนร่วมเคส  หรือพิมพ์ all / เดิม\n```").catch(() => null);
     if (warn) setTimeout(() => warn.delete().catch(() => {}), 15000);
@@ -266,6 +288,12 @@ async function handleModalSubmit(interaction) {
   const title = interaction.fields.getTextInputValue("title").trim();
   const text = [title, interaction.fields.getTextInputValue("fine"), interaction.fields.getTextInputValue("partners")].join("\n");
   const parsed = await parseCaseText(text, c.ownerId);
+  if (parsed.unregistered.length > 0) {
+    return interaction.reply({
+      embeds: [embeds.errorEmbed(`มีคนที่ไม่อยู่ในรายชื่อ: ${parsed.unregistered.map((id) => `<@${id}>`).join(" ")}\nแท็กเฉพาะคนที่มีชื่อในรายชื่อเท่านั้น`)],
+      flags: MessageFlags.Ephemeral,
+    });
+  }
   c.title = parsed.title || c.title;
   c.fine = parsed.fine;
   c.participants = parsed.participants;
