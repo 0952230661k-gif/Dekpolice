@@ -72,7 +72,7 @@ async function ownerInfo(guild, c) {
   const names = {};
   for (const id of new Set([c.ownerId, c.cancelledBy, ...c.participants].filter(Boolean))) {
     const reg = await db.findMember(id).catch(() => null);
-    if (reg) names[id] = embeds.memberNickname(reg);
+    if (reg) names[id] = reg.position ? `[${reg.position}] ${reg.gameName}` : reg.gameName; // ขึ้นยศตามรายชื่อ
   }
   return {
     ownerName: names[c.ownerId] || "เจ้าหน้าที่",
