@@ -67,7 +67,7 @@ module.exports = {
     const nicknameResult = await setNickname(
       interaction,
       discordId,
-      embeds.memberNickname({ position: existing.position, gameName: newName })
+      embeds.memberNickname({ badgeNumber: existing.badgeNumber, position: existing.position, gameName: newName })
     );
 
     const resultLines = [

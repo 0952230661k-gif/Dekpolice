@@ -490,13 +490,18 @@ async function handleSelectRegPosition(interaction) {
     registeredAt: time.nowIso(),
   };
 
-  await db.addMember(data);
+  data.badgeNumber = await db.addMember(data);
   await roster.refreshRoster(interaction.client);
+
+  // ตั้งชื่อเล่นในดิสคอร์ด: #เลขประจำตัว [ตำแหน่ง] ชื่อ
+  const regNickname = await setNickname(interaction, pending.discordId, embeds.memberNickname(data));
 
   // แจกยศเริ่มต้น (config.autoRoleIds) ให้สมาชิกใหม่ทันที
   const roleResult = await assignRoles(interaction, pending.discordId, config.autoRoleIds);
 
-  const resultLines = [`เพิ่มสมาชิก ${pending.discordTag} สำเร็จ! ตอนนี้สามารถกดปุ่ม "เข้าเวร" ได้แล้ว`];
+  const resultLines = [`เพิ่มสมาชิก ${pending.discordTag} สำเร็จ! เลขประจำตัว #${data.badgeNumber} ตอนนี้สามารถกดปุ่ม "เข้าเวร" ได้แล้ว`];
+  if (regNickname?.ok) resultLines.push(`ตั้งชื่อเล่นเป็น: ${regNickname.nickname}`);
+  else if (regNickname) resultLines.push(`⚠️ ตั้งชื่อเล่นไม่สำเร็จ (${regNickname.reason}) กรุณาเปลี่ยนด้วยตนเอง`);
   if (roleResult?.added?.length) {
     resultLines.push(`แจกยศสำเร็จ: ${roleResult.added.join(" ")}`);
   }
@@ -561,7 +566,7 @@ async function handleSelectSetPosition(interaction) {
   const nicknameResult = await setNickname(
     interaction,
     discordId,
-    embeds.memberNickname({ position, gameName: existing.gameName })
+    embeds.memberNickname({ badgeNumber: existing.badgeNumber, position, gameName: existing.gameName })
   );
 
   const resultLines = [
@@ -833,7 +838,7 @@ async function handleModalSetName(interaction, targetId) {
   const nicknameResult = await setNickname(
     interaction,
     targetId,
-    embeds.memberNickname({ position: existing.position, gameName: newName })
+    embeds.memberNickname({ badgeNumber: existing.badgeNumber, position: existing.position, gameName: newName })
   );
 
   const resultLines = [`เปลี่ยนชื่อของ ${oldName} (${existing.discordName}) เป็น "${newName}" เรียบร้อยแล้ว`];

@@ -11,9 +11,14 @@ function memberDisplayName({ gameName, badgeNumber }) {
   return badgeNumber ? `#${badgeNumber} ${gameName}` : gameName;
 }
 
-// ---------- Helper: ชื่อเล่นในดิสคอร์ด รูปแบบ "[PD] ชื่อ" (ขึ้น PD คงที่ ไม่ขึ้นชื่อตำแหน่ง) ----------
-function memberNickname({ gameName }) {
-  return `[PD] ${gameName}`;
+// ---------- Helper: ชื่อเล่นในดิสคอร์ด รูปแบบ "#เลขประจำตัว [ตำแหน่ง] ชื่อ" ----------
+// ดิสคอร์ดจำกัด 32 ตัวอักษร ถ้ายาวเกินจะตัดที่ "ชื่อ" เท่านั้น เลขและตำแหน่งต้องอยู่ครบ
+function memberNickname({ badgeNumber, position, gameName }) {
+  const prefix = [badgeNumber ? `#${badgeNumber}` : null, position ? `[${position}]` : null].filter(Boolean).join(" ");
+  const full = prefix ? `${prefix} ${gameName}` : String(gameName);
+  if (full.length <= 32) return full;
+  const room = 32 - (prefix ? prefix.length + 1 : 0);
+  return prefix ? `${prefix} ${String(gameName).slice(0, Math.max(room, 1))}` : full.slice(0, 32);
 }
 
 function registerEmbed({ discordName, gameName, position, addedBy, badgeNumber }) {

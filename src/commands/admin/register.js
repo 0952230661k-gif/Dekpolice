@@ -5,6 +5,7 @@ const embeds = require("../../utils/embeds");
 const roster = require("../../utils/roster");
 const config = require("../../../config.json");
 const { isAdmin, sendLog } = require("../../utils/permissions");
+const { setNickname } = require("../../utils/discordSync");
 
 // แจกยศ (Role) ในดิสคอร์ดให้สมาชิกทันทีที่ถูกเพิ่มเข้าระบบ
 // อ่านรายชื่อยศจาก config.autoRoleIds (ใส่กี่ยศก็ได้)
@@ -115,9 +116,14 @@ module.exports = {
     data.badgeNumber = await db.addMember(data);
     await roster.refreshRoster(interaction.client);
 
+    // ตั้งชื่อเล่นในดิสคอร์ด: #เลขประจำตัว [ตำแหน่ง] ชื่อ
+    const nicknameResult = await setNickname(interaction, target.id, embeds.memberNickname(data));
+
     const roleResult = await assignAutoRoles(interaction, target.id);
 
     const resultLines = [`เพิ่มสมาชิก ${target.tag} สำเร็จ! เลขประจำตัว #${data.badgeNumber} ตอนนี้สามารถใช้คำสั่ง /เข้าเวร ได้แล้ว`];
+    if (nicknameResult?.ok) resultLines.push(`ตั้งชื่อเล่นเป็น: ${nicknameResult.nickname}`);
+    else if (nicknameResult) resultLines.push(`⚠️ ตั้งชื่อเล่นไม่สำเร็จ (${nicknameResult.reason}) กรุณาเปลี่ยนด้วยตนเอง`);
     if (roleResult?.added?.length) {
       resultLines.push(`แจกยศสำเร็จ: ${roleResult.added.join(" ")}`);
     }

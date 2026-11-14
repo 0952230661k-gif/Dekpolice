@@ -229,7 +229,7 @@ async function handleDecision(interaction) {
     const alreadyMember = await db.findMember(application.discordId);
     if (!alreadyMember) {
       const defaultPosition = config.positions?.[config.positions.length - 1] || "สมาชิกใหม่";
-      await db.addMember({
+      const newBadge = await db.addMember({
         discordId: application.discordId,
         discordName: application.discordName,
         gameName: application.gameName,
@@ -247,11 +247,11 @@ async function handleDecision(interaction) {
 
       roleResult = await assignRoles(interaction, application.discordId, config.autoRoleIds);
 
-      // เปลี่ยนชื่อเล่นเป็นรูปแบบสมาชิกจริง: "[ตำแหน่ง] ชื่อในเกม"
+      // เปลี่ยนชื่อเล่นเป็นรูปแบบสมาชิกจริง: "#เลขประจำตัว [ตำแหน่ง] ชื่อในเกม"
       approveNicknameResult = await setNickname(
         interaction,
         application.discordId,
-        embeds.memberNickname({ position: defaultPosition, gameName: application.gameName })
+        embeds.memberNickname({ badgeNumber: newBadge, position: defaultPosition, gameName: application.gameName })
       );
     }
   }
