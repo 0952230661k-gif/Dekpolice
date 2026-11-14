@@ -66,12 +66,18 @@ async function parseCaseText(text, ownerId) {
   return { title, fine, participants, unregistered };
 }
 
-async function ownerInfo(guild, ownerId) {
-  const member = await guild.members.fetch(ownerId).catch(() => null);
-  const reg = await db.findMember(ownerId).catch(() => null);
+async function ownerInfo(guild, c) {
+  const member = await guild.members.fetch(c.ownerId).catch(() => null);
+  // ชื่อที่แสดงในเคสมาจากรายชื่อ (members) เท่านั้น ไม่ใช้ชื่อ Discord
+  const names = {};
+  for (const id of new Set([c.ownerId, c.cancelledBy, ...c.participants].filter(Boolean))) {
+    const reg = await db.findMember(id).catch(() => null);
+    if (reg) names[id] = embeds.memberNickname(reg);
+  }
   return {
-    ownerName: member?.displayName || (reg?.gameName ? `[PD] ${reg.gameName}` : "เจ้าหน้าที่"),
+    ownerName: names[c.ownerId] || "เจ้าหน้าที่",
     ownerAvatarUrl: member?.displayAvatarURL({ size: 256 }) || null,
+    names,
   };
 }
 
@@ -131,7 +137,7 @@ async function handleMessage(message) {
   const id = await db.addCase(caseData);
   caseData.id = id;
 
-  const info = await ownerInfo(message.guild, message.author.id);
+  const info = await ownerInfo(message.guild, caseData);
   const sent = await message.channel.send({
     embeds: [embeds.caseEmbed(caseData, { ...info, imageName })],
     components: [embeds.caseRow()],
@@ -270,7 +276,7 @@ async function handleModalSubmit(interaction) {
   if (!c || c.status !== "active" || !canManage(interaction, c)) {
     return interaction.reply({ embeds: [embeds.errorEmbed("ไม่สามารถแก้ไขคดีนี้ได้")], flags: MessageFlags.Ephemeral });
   }
-  const info = await ownerInfo(interaction.guild, c.ownerId);
+  const info = await ownerInfo(interaction.guild, c);
 
   if (interaction.customId === "case_modal_cancel") {
     c.status = "cancelled";
@@ -278,8 +284,9 @@ async function handleModalSubmit(interaction) {
     c.cancelledAt = new Date().toISOString();
     c.cancelReason = interaction.fields.getTextInputValue("reason").trim();
     await db.cancelCase(c.id, c.cancelledBy, c.cancelReason, c.cancelledAt);
+    const cancelInfo = await ownerInfo(interaction.guild, c);
     return interaction.update({
-      embeds: [embeds.caseEmbed(c, { ...info, imageName: c.imageName })],
+      embeds: [embeds.caseEmbed(c, { ...cancelInfo, imageName: c.imageName })],
       components: [],
       allowedMentions: { parse: [] },
     });
@@ -298,8 +305,9 @@ async function handleModalSubmit(interaction) {
   c.fine = parsed.fine;
   c.participants = parsed.participants;
   await db.updateCase(c.id, c);
+  const info2 = await ownerInfo(interaction.guild, c);
   await interaction.update({
-    embeds: [embeds.caseEmbed(c, { ...info, imageName: c.imageName })],
+    embeds: [embeds.caseEmbed(c, { ...info2, imageName: c.imageName })],
     components: [embeds.caseRow()],
     allowedMentions: { parse: [] },
   });
