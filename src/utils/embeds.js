@@ -7,8 +7,8 @@ function formatSteamHex(steamHex) {
 }
 
 // ---------- Helper: ชื่อแสดงผลของสมาชิก ----------
-function memberDisplayName({ gameName }) {
-  return gameName;
+function memberDisplayName({ gameName, badgeNumber }) {
+  return badgeNumber ? `#${badgeNumber} ${gameName}` : gameName;
 }
 
 // ---------- Helper: ชื่อเล่นในดิสคอร์ด รูปแบบ "[PD] ชื่อ" (ขึ้น PD คงที่ ไม่ขึ้นชื่อตำแหน่ง) ----------
@@ -16,14 +16,15 @@ function memberNickname({ gameName }) {
   return `[PD] ${gameName}`;
 }
 
-function registerEmbed({ discordName, gameName, position, addedBy }) {
+function registerEmbed({ discordName, gameName, position, addedBy, badgeNumber }) {
   const embed = new EmbedBuilder()
     .setColor(0x5865f2)
     .setTitle("📋 เพิ่มสมาชิกสำเร็จ")
     .addFields(
       { name: "Discord", value: discordName, inline: true },
       { name: "ชื่อ", value: gameName, inline: true },
-      { name: "ตำแหน่ง", value: position, inline: true }
+      { name: "ตำแหน่ง", value: position, inline: true },
+      { name: "เลขประจำตัว", value: badgeNumber ? `#${badgeNumber}` : "-", inline: true }
     )
     .setTimestamp();
 
@@ -251,13 +252,13 @@ function casePanelRow() {
 }
 
 /** หน้า "ข้อมูลการทำงาน" ของตัวเอง (ส่งแบบเห็นคนเดียว) */
-function workInfoEmbed({ displayName, avatarUrl, statusText, tenureDays, hours, cases, fmt }) {
+function workInfoEmbed({ badgeNumber, displayName, avatarUrl, statusText, tenureDays, hours, cases, fmt }) {
   const embed = new EmbedBuilder()
     .setColor(0x00b0f4)
     .setTitle("ℹ️ ข้อมูลการทำงาน")
     .setDescription(
       `**สรุปข้อมูลของ ${displayName} ในปัจจุบัน**\n` +
-        `> สถานะ: ${statusText}\n> อายุงาน: \`${tenureDays}\` วัน\n\n` +
+        `> เลขประจำตัว: \`${badgeNumber ? "#" + badgeNumber : "-"}\`\n> สถานะ: ${statusText}\n> อายุงาน: \`${tenureDays}\` วัน\n\n` +
         `🕐 **เวลาการทำงาน**\n` +
         `> วันนี้: \`${fmt(hours.hoursToday)}\`\n> สัปดาห์นี้: \`${fmt(hours.hoursWeek)}\`\n> สะสมเดือนนี้: \`${fmt(hours.hoursMonth)}\`\n\n` +
         `🏆 **เคสสัปดาห์นี้**\n` +

@@ -112,12 +112,12 @@ module.exports = {
       registeredAt: time.nowIso(),
     };
 
-    await db.addMember(data);
+    data.badgeNumber = await db.addMember(data);
     await roster.refreshRoster(interaction.client);
 
     const roleResult = await assignAutoRoles(interaction, target.id);
 
-    const resultLines = [`เพิ่มสมาชิก ${target.tag} สำเร็จ! ตอนนี้สามารถใช้คำสั่ง /เข้าเวร ได้แล้ว`];
+    const resultLines = [`เพิ่มสมาชิก ${target.tag} สำเร็จ! เลขประจำตัว #${data.badgeNumber} ตอนนี้สามารถใช้คำสั่ง /เข้าเวร ได้แล้ว`];
     if (roleResult?.added?.length) {
       resultLines.push(`แจกยศสำเร็จ: ${roleResult.added.join(" ")}`);
     }

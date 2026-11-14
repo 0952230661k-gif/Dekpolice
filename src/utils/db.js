@@ -26,7 +26,8 @@ const SCHEMA_STATEMENTS = [
     game_name TEXT,
     department TEXT,
     position TEXT,
-    registered_at TEXT
+    registered_at TEXT,
+    badge_number TEXT
   )`,
   `CREATE TABLE IF NOT EXISTS duty_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -139,6 +140,7 @@ const APPLICATIONS_MIGRATION_COLUMNS = [
   { name: "examiner_name", ddl: "ALTER TABLE applications ADD COLUMN examiner_name TEXT" },
   { name: "steam_link", ddl: "ALTER TABLE applications ADD COLUMN steam_link TEXT" },
   { name: "steam_hex", ddl: "ALTER TABLE applications ADD COLUMN steam_hex TEXT" },
+  { name: "members.badge_number", ddl: "ALTER TABLE members ADD COLUMN badge_number TEXT" },
   // คอลัมน์ของตาราง cases (กรณีสร้างตารางไว้ก่อนมีระบบยกเลิกเคส)
   { name: "cases.status", ddl: "ALTER TABLE cases ADD COLUMN status TEXT DEFAULT 'active'" },
   { name: "cases.cancelled_by", ddl: "ALTER TABLE cases ADD COLUMN cancelled_by TEXT" },
@@ -164,6 +166,7 @@ const ready = (async () => {
       }
     }
   }
+  await backfillBadgeNumbers();
   console.log(
     TURSO_URL
       ? "[db] เชื่อมต่อ Turso (คลาวด์) เรียบร้อย — ข้อมูลจะไม่หายตอน deploy/restart"
@@ -172,6 +175,29 @@ const ready = (async () => {
 })();
 
 // ---------- แปลงชื่อคอลัมน์ snake_case (ในฐานข้อมูล) <-> camelCase (ที่ไฟล์คำสั่งใช้อยู่เดิม) ----------
+
+// ---------- เลขประจำตัว (badge number) ----------
+// ออกอัตโนมัติตอนสมัคร เรียง 1, 2, 3 ... ไม่ซ้ำกัน สมาชิกเดิมที่ยังไม่มีเลขจะได้รับเลขตามลำดับวันที่สมัคร
+async function nextBadgeNumber() {
+  const { rows } = await client.execute("SELECT badge_number FROM members WHERE badge_number IS NOT NULL AND badge_number != ''");
+  let max = 0;
+  for (const r of rows) {
+    const n = parseInt(r.badge_number, 10);
+    if (/^\d+$/.test(String(r.badge_number)) && n > max) max = n;
+  }
+  return String(max + 1);
+}
+
+async function backfillBadgeNumbers() {
+  const { rows } = await client.execute(
+    "SELECT discord_id FROM members WHERE badge_number IS NULL OR badge_number = '' ORDER BY registered_at, rowid"
+  );
+  for (const r of rows) {
+    const badge = await nextBadgeNumber();
+    await client.execute({ sql: "UPDATE members SET badge_number = ? WHERE discord_id = ?", args: [badge, r.discord_id] });
+  }
+  if (rows.length > 0) console.log(`[db] ออกเลขประจำตัวให้สมาชิกเดิม ${rows.length} คน`);
+}
 
 function rowToMember(row) {
   if (!row) return null;
@@ -182,6 +208,7 @@ function rowToMember(row) {
     department: row.department,
     position: row.position,
     registeredAt: row.registered_at,
+    badgeNumber: row.badge_number || null,
   };
 }
 
@@ -212,9 +239,10 @@ async function findMember(discordId) {
 
 async function addMember(data) {
   await ready;
+  const badgeNumber = data.badgeNumber ? String(data.badgeNumber) : await nextBadgeNumber();
   await client.execute({
-    sql: `INSERT INTO members (discord_id, discord_name, game_name, department, position, registered_at)
-          VALUES (?, ?, ?, ?, ?, ?)`,
+    sql: `INSERT INTO members (discord_id, discord_name, game_name, department, position, registered_at, badge_number)
+          VALUES (?, ?, ?, ?, ?, ?, ?)`,
     args: [
       data.discordId,
       data.discordName,
@@ -222,8 +250,28 @@ async function addMember(data) {
       data.department ?? null,
       data.position,
       data.registeredAt,
+      badgeNumber,
     ],
   });
+  return badgeNumber; // เลขประจำตัวที่ออกให้
+}
+
+async function findMemberByBadgeNumber(badgeNumber) {
+  await ready;
+  const { rows } = await client.execute({
+    sql: "SELECT * FROM members WHERE badge_number = ?",
+    args: [String(badgeNumber)],
+  });
+  return rowToMember(rows[0]);
+}
+
+async function updateMemberBadgeNumber(discordId, badgeNumber) {
+  await ready;
+  const result = await client.execute({
+    sql: "UPDATE members SET badge_number = ? WHERE discord_id = ?",
+    args: [String(badgeNumber), discordId],
+  });
+  return Number(result.rowsAffected) > 0;
 }
 
 async function getAllMembers() {
@@ -408,6 +456,7 @@ async function exportAllCsv() {
       "department",
       "position",
       "registered_at",
+      "badge_number",
     ]),
     dutyLog: toCsv(dutyLogRes.rows, [
       "id",
@@ -831,6 +880,8 @@ async function setAfk(discordId, isAfk) {
 }
 
 module.exports = {
+  findMemberByBadgeNumber,
+  updateMemberBadgeNumber,
   addCase,
   cancelCase,
   getAllCases,
