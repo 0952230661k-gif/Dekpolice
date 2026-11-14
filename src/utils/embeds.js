@@ -184,15 +184,15 @@ function dutyPanelRow() {
 // ---------- บันทึกคดี ----------
 
 function caseEmbed(c, { ownerName, ownerAvatarUrl, imageName, names = {} } = {}) {
-  // แสดงชื่อจากรายชื่อ (members) ถ้าไม่มีค่อย fallback เป็นแท็ก Discord
-  const nm = (id) => names[id] || `<@${id}>`;
+  // ชื่อจากรายชื่อใช้เฉพาะบรรทัดบนสุด (author) ส่วนในกรอบใช้แท็กเหมือนเดิม
+  const nm = (id) => `<@${id}>`;
   const cancelled = c.status === "cancelled";
   const fineText = c.fine ? `💵 **${c.fine.toLocaleString("en-US")}**` : "💵 **-**";
   const partners =
-    c.participants.length > 0 ? c.participants.map((id) => `**${nm(id)}**`).join(" · ") : "*ไม่มี*";
+    c.participants.length > 0 ? c.participants.map((id) => nm(id)).join(" · ") : "*ไม่มี*";
 
   let description =
-    `👮 **${nm(c.ownerId)}** · ${fineText}\n` +
+    `👮 ${nm(c.ownerId)} · ${fineText}\n` +
     `🤝 **ผู้ช่วยเหลือ · ${c.participants.length} คน**\n${partners}`;
 
   if (cancelled) {
