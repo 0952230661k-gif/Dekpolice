@@ -7,6 +7,8 @@ const {
   MessageFlags,
   UserSelectMenuBuilder,
   StringSelectMenuBuilder,
+  ButtonBuilder,
+  ButtonStyle,
 } = require("discord.js");
 const config = require("../../config.json");
 const db = require("../utils/db");
@@ -234,11 +236,72 @@ async function showAllTotals(interaction) {
   });
 }
 
+const REMOVE_PAGE_SIZE = 25;
+
+/** หน้าลดผู้ช่วยเหลือ แบ่งหน้าละ 25 คน (ข้อจำกัดเมนูของ Discord) เพื่อให้ลดได้ครบแม้มีผู้ช่วยหลายสิบคน */
+async function buildRemoveUi(c, caseMessageId, page) {
+  const pages = Math.max(1, Math.ceil(c.participants.length / REMOVE_PAGE_SIZE));
+  page = Math.min(Math.max(page, 0), pages - 1);
+  const slice = c.participants.slice(page * REMOVE_PAGE_SIZE, (page + 1) * REMOVE_PAGE_SIZE);
+  const options = [];
+  for (const pid of slice) {
+    const reg = await db.findMember(pid).catch(() => null);
+    options.push({
+      label: (reg ? `${reg.badgeNumber ? embeds.formatBadge(reg.badgeNumber) + " " : ""}${reg.gameName}` : pid).slice(0, 100),
+      value: pid,
+    });
+  }
+  const menu = new StringSelectMenuBuilder()
+    .setCustomId(`case_sel_remove:${caseMessageId}`)
+    .setPlaceholder("เลือกคนที่จะลดออกจากผู้ช่วยเหลือ")
+    .setMinValues(1)
+    .setMaxValues(options.length)
+    .addOptions(options);
+  const rows = [new ActionRowBuilder().addComponents(menu)];
+  if (pages > 1) {
+    rows.push(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId(`case_rempg:${caseMessageId}:${page - 1}`).setLabel("ก่อนหน้า").setEmoji("◀️").setStyle(ButtonStyle.Secondary).setDisabled(page === 0),
+        new ButtonBuilder().setCustomId(`case_rempg:${caseMessageId}:${page + 1}`).setLabel("ถัดไป").setEmoji("▶️").setStyle(ButtonStyle.Secondary).setDisabled(page >= pages - 1)
+      )
+    );
+  }
+  return {
+    content: `➖ **ลดผู้ช่วยเหลือ** ในเคส "${c.title}" — ทั้งหมด ${c.participants.length} คน (หน้า ${page + 1}/${pages})`,
+    components: rows,
+  };
+}
+
 async function handleButton(interaction) {
   const id = interaction.customId;
   if (id === "case_info") return showMyInfo(interaction);
   if (id === "case_rank") return showRanking(interaction);
   if (id === "case_all") return showAllTotals(interaction);
+
+  // ปุ่มที่อยู่ในข้อความชั่วคราว (ephemeral) แนบรหัสข้อความเคสไว้ใน customId
+  if (id.startsWith("case_addtext:") || id.startsWith("case_rempg:")) {
+    const [kind, caseMessageId, pageStr] = id.split(":");
+    const target = await db.getCaseByMessage(caseMessageId);
+    if (!target || target.status !== "active" || !canManage(interaction, target)) {
+      return interaction.update({ content: "❌ ไม่พบเคสนี้ หรือไม่มีสิทธิ์จัดการ", components: [] });
+    }
+    if (kind === "case_rempg") {
+      return interaction.update(await buildRemoveUi(target, caseMessageId, parseInt(pageStr, 10) || 0));
+    }
+    const modal = new ModalBuilder().setCustomId(`case_modal_addtext:${caseMessageId}`).setTitle("เพิ่มผู้ช่วยเหลือหลายคน");
+    modal.addComponents(
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder()
+          .setCustomId("people")
+          .setLabel("แท็กคนที่จะเพิ่ม (กี่คนก็ได้) หรือพิมพ์ all")
+          .setStyle(TextInputStyle.Paragraph)
+          .setPlaceholder("@คน1 @คน2 @คน3 ...")
+          .setMaxLength(4000)
+          .setRequired(true)
+      )
+    );
+    return interaction.showModal(modal);
+  }
 
   const c = await db.getCaseByMessage(interaction.message.id);
   if (!c) {
@@ -255,12 +318,20 @@ async function handleButton(interaction) {
     if (c.status !== "active") return;
     const menu = new UserSelectMenuBuilder()
       .setCustomId(`case_sel_add:${interaction.message.id}`)
-      .setPlaceholder("เลือกคนที่จะเพิ่มเป็นผู้ช่วยเหลือ (สูงสุด 10 คน)")
+      .setPlaceholder("เลือกคนที่จะเพิ่มเป็นผู้ช่วยเหลือ (เมนูละสูงสุด 25 คน)")
       .setMinValues(1)
-      .setMaxValues(10);
+      .setMaxValues(25);
+    const textBtn = new ButtonBuilder()
+      .setCustomId(`case_addtext:${interaction.message.id}`)
+      .setLabel("พิมพ์แท็กหลายคน / all")
+      .setEmoji("⌨️")
+      .setStyle(ButtonStyle.Primary);
     return interaction.reply({
-      content: `➕ **เพิ่มผู้ช่วยเหลือ** ในเคส "${c.title}" — เลือกได้เฉพาะคนที่มีชื่อในรายชื่อ`,
-      components: [new ActionRowBuilder().addComponents(menu)],
+      content:
+        `➕ **เพิ่มผู้ช่วยเหลือ** ในเคส "${c.title}" — ไม่จำกัดจำนวน (ปัจจุบัน ${c.participants.length} คน)\n` +
+        `เลือกจากเมนู (เพิ่มกี่รอบก็ได้) หรือกดปุ่มด้านล่างเพื่อพิมพ์แท็กได้ครั้งละมากๆ / พิมพ์ \`all\` เพื่อเพิ่มทุกคนที่เข้าเวร\n` +
+        `เพิ่มได้เฉพาะคนที่มีชื่อในรายชื่อ`,
+      components: [new ActionRowBuilder().addComponents(menu), new ActionRowBuilder().addComponents(textBtn)],
       flags: MessageFlags.Ephemeral,
     });
   }
@@ -270,26 +341,7 @@ async function handleButton(interaction) {
     if (c.participants.length === 0) {
       return interaction.reply({ embeds: [embeds.errorEmbed("เคสนี้ยังไม่มีผู้ช่วยเหลือให้ลดออก")], flags: MessageFlags.Ephemeral });
     }
-    const list = c.participants.slice(0, 25); // เมนูเลือกได้สูงสุด 25 รายการ
-    const options = [];
-    for (const pid of list) {
-      const reg = await db.findMember(pid).catch(() => null);
-      options.push({
-        label: (reg ? `${reg.badgeNumber ? embeds.formatBadge(reg.badgeNumber) + " " : ""}${reg.gameName}` : pid).slice(0, 100),
-        value: pid,
-      });
-    }
-    const menu = new StringSelectMenuBuilder()
-      .setCustomId(`case_sel_remove:${interaction.message.id}`)
-      .setPlaceholder("เลือกคนที่จะลดออกจากผู้ช่วยเหลือ")
-      .setMinValues(1)
-      .setMaxValues(options.length)
-      .addOptions(options);
-    return interaction.reply({
-      content: `➖ **ลดผู้ช่วยเหลือ** ในเคส "${c.title}"`,
-      components: [new ActionRowBuilder().addComponents(menu)],
-      flags: MessageFlags.Ephemeral,
-    });
+    return interaction.reply({ ...(await buildRemoveUi(c, interaction.message.id, 0)), flags: MessageFlags.Ephemeral });
   }
 
   if (id === "case_cancel") {
@@ -372,7 +424,41 @@ async function handleSelect(interaction) {
   await interaction.update({ content: summary, components: [], allowedMentions: { parse: [] } });
 }
 
+/** เพิ่มผู้ช่วยเหลือจากข้อความที่พิมพ์ (แท็กหลายคน/all) ไม่จำกัดจำนวน */
+async function handleAddText(interaction) {
+  const caseMessageId = interaction.customId.split(":")[1];
+  const c = await db.getCaseByMessage(caseMessageId);
+  if (!c || c.status !== "active" || !canManage(interaction, c)) {
+    return interaction.reply({ embeds: [embeds.errorEmbed("ไม่พบเคสนี้ หรือไม่มีสิทธิ์จัดการ")], flags: MessageFlags.Ephemeral });
+  }
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  const parsed = await parseCaseText(`x\n${interaction.fields.getTextInputValue("people")}`, c.ownerId);
+  const added = parsed.participants.filter((p) => !c.participants.includes(p));
+  c.participants.push(...added);
+  await db.updateCase(c.id, c);
+
+  const info = await ownerInfo(interaction.guild, c);
+  const caseMessage = await interaction.channel.messages.fetch(caseMessageId).catch(() => null);
+  if (caseMessage) {
+    await caseMessage.edit({
+      embeds: [embeds.caseEmbed(c, { ...info, imageName: c.imageName })],
+      components: [embeds.caseRow()],
+      allowedMentions: { parse: [] },
+    });
+  }
+
+  const lines = [`✅ เพิ่มแล้ว ${added.length} คน (ผู้ช่วยทั้งหมด ${c.participants.length} คน)`];
+  const dup = parsed.participants.length - added.length;
+  if (dup > 0) lines.push(`ℹ️ ข้าม ${dup} คนที่อยู่ในเคสอยู่แล้ว`);
+  if (parsed.unregistered.length > 0) {
+    lines.push(`❌ ไม่อยู่ในรายชื่อ เพิ่มไม่ได้ ${parsed.unregistered.length} คน: ${parsed.unregistered.slice(0, 20).map((x) => `<@${x}>`).join(" ")}`);
+  }
+  await interaction.editReply({ content: lines.join("\n"), allowedMentions: { parse: [] } });
+}
+
 async function handleModalSubmit(interaction) {
+  if (interaction.customId.startsWith("case_modal_addtext:")) return handleAddText(interaction);
   const c = await db.getCaseByMessage(interaction.message?.id);
   if (!c || c.status !== "active" || !canManage(interaction, c)) {
     return interaction.reply({ embeds: [embeds.errorEmbed("ไม่สามารถแก้ไขคดีนี้ได้")], flags: MessageFlags.Ephemeral });

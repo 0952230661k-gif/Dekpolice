@@ -201,8 +201,21 @@ function caseEmbed(c, { ownerName, ownerAvatarUrl, imageName, names = {} } = {})
   const nm = (id) => `<@${id}>`;
   const cancelled = c.status === "cancelled";
   const fineText = c.fine ? `💵 **${c.fine.toLocaleString("en-US")}**` : "💵 **-**";
-  const partners =
-    c.participants.length > 0 ? c.participants.map((id) => nm(id)).join(" · ") : "*ไม่มี*";
+  // ผู้ช่วยเหลือไม่จำกัดจำนวน แต่ description ของ embed จำกัด 4096 ตัวอักษร จึงตัดการแสดงผลที่ ~3000 ตัวอักษร
+  // (ข้อมูลและสถิติยังนับครบทุกคน แค่ข้อความในเคสจะขึ้น "และอีก N คน")
+  let partners = "*ไม่มี*";
+  if (c.participants.length > 0) {
+    const shown = [];
+    let len = 0;
+    for (const id of c.participants) {
+      const piece = nm(id);
+      if (len + piece.length + 3 > 3000) break;
+      shown.push(piece);
+      len += piece.length + 3;
+    }
+    partners = shown.join(" · ");
+    if (shown.length < c.participants.length) partners += ` · … และอีก ${c.participants.length - shown.length} คน`;
+  }
 
   let description =
     `👮 ${nm(c.ownerId)} · ${fineText}\n` +
