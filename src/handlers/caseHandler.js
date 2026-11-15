@@ -90,26 +90,32 @@ async function handleMessage(message) {
   if (!channelId || channelId.startsWith("ใส่_")) return;
   if (message.author.bot || message.channelId !== channelId || !message.guild) return;
 
-  const tempReply = async (text) => {
-    const warn = await message.reply({ content: text, allowedMentions: { parse: [] } }).catch(() => null);
-    if (warn) setTimeout(() => warn.delete().catch(() => {}), 20000);
+  // ส่งไม่ผ่าน: ลบข้อความต้นฉบับ (รวมรูปที่แนบ) ทิ้งทุกกรณี แล้วแจ้งเหตุผลชั่วคราวพร้อมข้อความเดิม จะได้พิมพ์ส่งใหม่ได้
+  const reject = async (text) => {
+    const original = String(message.content || "").replace(/`/g, "'").slice(0, 300);
+    await message.delete().catch(() => {});
+    const warn = await message.channel
+      .send({
+        content: `<@${message.author.id}> ${text}${original ? `\n**ข้อความเดิมของคุณ**\n\`\`\`\n${original}\n\`\`\`` : ""}`,
+        allowedMentions: { parse: [] },
+      })
+      .catch(() => null);
+    if (warn) setTimeout(() => warn.delete().catch(() => {}), 30000);
   };
 
-  // เจ้าของเคสต้องอยู่ในรายชื่อ ไม่งั้นส่งเคสไม่ได้ (ไม่ลบข้อความเดิม เพื่อให้แก้แล้วส่งใหม่ได้)
+  // เจ้าของเคสต้องอยู่ในรายชื่อ ไม่งั้นส่งเคสไม่ได้
   if (!(await db.findMember(message.author.id))) {
-    return tempReply("❌ คุณยังไม่มีชื่อในรายชื่อ จึงส่งเคสไม่ได้ กรุณาติดต่อแอดมินเพื่อเพิ่มชื่อก่อน");
+    return reject("❌ คุณยังไม่มีชื่อในรายชื่อ จึงส่งเคสไม่ได้ กรุณาติดต่อแอดมินเพื่อเพิ่มชื่อก่อน");
   }
 
   const parsed = await parseCaseText(message.content, message.author.id);
   if (parsed.unregistered.length > 0) {
-    return tempReply(
+    return reject(
       `❌ ส่งเคสไม่ได้ มีคนที่ไม่อยู่ในรายชื่อ: ${parsed.unregistered.map((id) => `<@${id}>`).join(" ")}\nแท็กเฉพาะคนที่มีชื่อในรายชื่อเท่านั้น หรือให้แอดมินเพิ่มชื่อก่อน`
     );
   }
   if (!parsed.title) {
-    const warn = await message.reply("⚠️ ต้องพิมพ์ชื่อคดีในบรรทัดแรก\n```\nชื่อคดี\nค่าปรับ (ไม่ใส่ก็ได้)\n@เพื่อนร่วมเคส  หรือพิมพ์ all / เดิม\n```").catch(() => null);
-    if (warn) setTimeout(() => warn.delete().catch(() => {}), 15000);
-    return;
+    return reject("⚠️ ต้องพิมพ์ชื่อคดีในบรรทัดแรก\n```\nชื่อคดี\nค่าปรับ (ไม่ใส่ก็ได้)\n@เพื่อนร่วมเคส  หรือพิมพ์ all / เดิม\n```");
   }
 
   // ดาวน์โหลดรูปไว้ก่อนลบข้อความต้นฉบับ (ลบแล้วลิงก์รูปจะหมดอายุ)
