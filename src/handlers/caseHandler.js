@@ -21,16 +21,14 @@ const { EmbedBuilder } = require("discord.js");
 const MENTION_RE = /<@!?(\d{15,25})>/g;
 
 /**
- * แปลงข้อความ 3 บรรทัดเป็นข้อมูลคดี
- *   บรรทัด 1: ชื่อคดี
- *   บรรทัด 2: แท็กเพื่อนร่วมเคส — all = ทุกคนที่กำลังเข้าเวร, เดิม = ทีมเดียวกับเคสล่าสุดของคุณ
- * คำว่า all หรือแท็กอยู่บรรทัดไหนก็ได้ตั้งแต่บรรทัดที่ 2
+ * แปลงข้อความเป็นข้อมูลเคส — ไม่มีชื่อคดีแล้ว พิมพ์แค่แท็กผู้ช่วยเหลือ
+ *   แท็กเพื่อนร่วมเคส — all = ทุกคนที่กำลังเข้าเวร, เดิม = ทีมเดียวกับเคสล่าสุดของคุณ
+ * จะแท็ก/พิมพ์ all/เดิม ไว้บรรทัดไหนก็ได้ ข้อความอื่นนอกจากนี้จะถูกข้าม
  * (ไม่มีระบบค่าปรับแล้ว — บรรทัดที่เป็นตัวเลขล้วนจากความเคยชินเก่าจะถูกข้ามไป)
  */
 async function parseCaseText(text, ownerId) {
   const lines = String(text || "").split("\n").map((l) => l.trim());
-  const title = (lines[0] || "").replace(MENTION_RE, "").trim();
-  const rest = lines.slice(1);
+  const rest = lines;
 
   let wantAll = false;
   let wantSame = false;
@@ -62,7 +60,7 @@ async function parseCaseText(text, ownerId) {
     if (await db.findMember(id)) participants.push(id);
     else unregistered.push(id);
   }
-  return { title, participants, unregistered };
+  return { participants, unregistered };
 }
 
 async function ownerInfo(guild, c) {
@@ -113,8 +111,9 @@ async function handleMessage(message) {
       `❌ ส่งเคสไม่ได้ มีคนที่ไม่อยู่ในรายชื่อ: ${parsed.unregistered.map((id) => `<@${id}>`).join(" ")}\nแท็กเฉพาะคนที่มีชื่อในรายชื่อเท่านั้น หรือให้แอดมินเพิ่มชื่อก่อน`
     );
   }
-  if (!parsed.title) {
-    return reject("⚠️ ต้องพิมพ์ชื่อคดีในบรรทัดแรก\n```\nชื่อคดี\n@เพื่อนร่วมเคส  หรือพิมพ์ all / เดิม\n```");
+  // ไม่มีชื่อคดีแล้ว: ต้องมีอย่างใดอย่างหนึ่ง คือแนบรูป หรือแท็กผู้ช่วยเหลือ (กันข้อความคุยเล่นกลายเป็นเคส)
+  if (parsed.participants.length === 0 && message.attachments.size === 0) {
+    return reject("⚠️ ต้องแนบรูป และ/หรือแท็กคนช่วยเหลือ\n```\n@คนที่มาช่วย  หรือพิมพ์ all / เดิม\n```");
   }
 
   // ดาวน์โหลดรูปไว้ก่อนลบข้อความต้นฉบับ (ลบแล้วลิงก์รูปจะหมดอายุ)
@@ -136,7 +135,7 @@ async function handleMessage(message) {
     channelId,
     messageId: "pending",
     ownerId: message.author.id,
-    title: parsed.title,
+    title: "",
     participants: parsed.participants,
     imageName,
     createdAt: new Date().toISOString(),
@@ -154,6 +153,11 @@ async function handleMessage(message) {
 
   await db.setCaseMessage(id, sent.id);
   await message.delete().catch(() => {}); // ลบข้อความต้นฉบับให้ห้องสะอาด
+}
+
+// ชื่อเรียกเคสในข้อความ: เคสเก่าที่มีชื่อคดีใช้ชื่อเดิม เคสใหม่ใช้เลขคดี
+function caseLabel(c) {
+  return c.title ? `"${c.title}"` : `#${c.id}`;
 }
 
 function canManage(interaction, c) {
@@ -260,7 +264,7 @@ async function buildRemoveUi(c, caseMessageId, page) {
     );
   }
   return {
-    content: `➖ **ลดผู้ช่วยเหลือ** ในเคส "${c.title}" — ทั้งหมด ${c.participants.length} คน (หน้า ${page + 1}/${pages})`,
+    content: `➖ **ลดผู้ช่วยเหลือ** ในเคส ${caseLabel(c)} — ทั้งหมด ${c.participants.length} คน (หน้า ${page + 1}/${pages})`,
     components: rows,
   };
 }
@@ -321,7 +325,7 @@ async function handleButton(interaction) {
       .setStyle(ButtonStyle.Primary);
     return interaction.reply({
       content:
-        `➕ **เพิ่มผู้ช่วยเหลือ** ในเคส "${c.title}" — ไม่จำกัดจำนวน (ปัจจุบัน ${c.participants.length} คน)\n` +
+        `➕ **เพิ่มผู้ช่วยเหลือ** ในเคส ${caseLabel(c)} — ไม่จำกัดจำนวน (ปัจจุบัน ${c.participants.length} คน)\n` +
         `เลือกจากเมนู (เพิ่มกี่รอบก็ได้) หรือกดปุ่มด้านล่างเพื่อพิมพ์แท็กได้ครั้งละมากๆ / พิมพ์ \`all\` เพื่อเพิ่มทุกคนที่เข้าเวร\n` +
         `เพิ่มได้เฉพาะคนที่มีชื่อในรายชื่อ`,
       components: [new ActionRowBuilder().addComponents(menu), new ActionRowBuilder().addComponents(textBtn)],
@@ -350,9 +354,6 @@ async function handleButton(interaction) {
   if (id === "case_edit") {
     const modal = new ModalBuilder().setCustomId("case_modal_edit").setTitle("แก้ไขบันทึกคดี");
     modal.addComponents(
-      new ActionRowBuilder().addComponents(
-        new TextInputBuilder().setCustomId("title").setLabel("ชื่อคดี").setStyle(TextInputStyle.Short).setValue(c.title).setMaxLength(100).setRequired(true)
-      ),
       new ActionRowBuilder().addComponents(
         new TextInputBuilder()
           .setCustomId("partners")
@@ -423,7 +424,7 @@ async function handleAddText(interaction) {
   }
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-  const parsed = await parseCaseText(`x\n${interaction.fields.getTextInputValue("people")}`, c.ownerId);
+  const parsed = await parseCaseText(interaction.fields.getTextInputValue("people"), c.ownerId);
   const added = parsed.participants.filter((p) => !c.participants.includes(p));
   c.participants.push(...added);
   await db.updateCase(c.id, c);
@@ -469,8 +470,7 @@ async function handleModalSubmit(interaction) {
     });
   }
 
-  const title = interaction.fields.getTextInputValue("title").trim();
-  const text = [title, interaction.fields.getTextInputValue("partners")].join("\n");
+  const text = interaction.fields.getTextInputValue("partners");
   const parsed = await parseCaseText(text, c.ownerId);
   if (parsed.unregistered.length > 0) {
     return interaction.reply({
@@ -478,7 +478,6 @@ async function handleModalSubmit(interaction) {
       flags: MessageFlags.Ephemeral,
     });
   }
-  c.title = parsed.title || c.title;
   c.participants = parsed.participants;
   await db.updateCase(c.id, c);
   const info2 = await ownerInfo(interaction.guild, c);

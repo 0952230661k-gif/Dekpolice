@@ -243,9 +243,11 @@ function caseEmbed(c, { ownerName, ownerAvatarUrl, imageName, names = {} } = {})
   const embed = new EmbedBuilder()
     .setColor(cancelled ? 0xed4245 : 0x57f287)
     .setAuthor({ name: ownerName || "เจ้าหน้าที่" })
-    .setTitle(cancelled ? `❌ ยกเลิกแล้ว · ${c.title}` : c.title)
     .setDescription(description)
     .setFooter({ text: cancelled ? `${dateText} · เคสนี้ไม่ถูกนับแล้ว` : `คดีที่ #${c.id} · ${dateText}` });
+  // ไม่มีชื่อคดีแล้ว: เคสใหม่ไม่มีหัวข้อ (เคสเก่าที่มีชื่อยังแสดงชื่อเดิม) เคสที่ยกเลิกขึ้นหัวข้อ "ยกเลิกแล้ว"
+  if (cancelled) embed.setTitle(c.title ? `❌ ยกเลิกแล้ว · ${c.title}` : "❌ ยกเลิกแล้ว");
+  else if (c.title) embed.setTitle(c.title);
   if (ownerAvatarUrl) embed.setThumbnail(ownerAvatarUrl);
   if (imageName) embed.setImage(`attachment://${imageName}`);
   return embed;
@@ -267,12 +269,11 @@ function casePanelEmbed() {
     .setColor(0x00b0f4)
     .setTitle("📋 ระบบส่งเคส | Case Report")
     .setDescription(
-      "ทำคดีเสร็จแล้ว **พิมพ์ 2 บรรทัดนี้พร้อมแนบรูป** ลงในห้องได้เลย\nไม่ต้องพิมพ์คำนำหน้าอะไรทั้งสิ้น\n" +
-        "```\nปืน หลบหนี\n@คนที่มาช่วย\n```\n" +
-        "> **บรรทัด 1** ชื่อคดี · **บรรทัด 2** แท็กคนช่วย\n" +
-        "> ไม่มีคนช่วย ข้ามบรรทัดที่ 2 ไปได้เลย\n" +
-        "> พิมพ์ `all` แทนบรรทัด 2 = แท็กทุกคนที่กำลังเข้าเวรอยู่\n" +
-        "> พิมพ์ `เดิม` แทนบรรทัด 2 = ใช้ทีมเดียวกับเคสล่าสุดที่คุณส่ง"
+      "ทำคดีเสร็จแล้ว **แนบรูป แล้วแท็กคนที่มาช่วย** ลงในห้องได้เลย\nไม่ต้องเขียนชื่อคดี ไม่ต้องพิมพ์คำนำหน้าอะไรทั้งสิ้น\n" +
+        "```\n@คนที่มาช่วย\n```\n" +
+        "> ไม่มีคนช่วย แนบรูปอย่างเดียวได้เลย\n" +
+        "> พิมพ์ `all` แทนการแท็ก = ทุกคนที่กำลังเข้าเวรอยู่\n" +
+        "> พิมพ์ `เดิม` แทนการแท็ก = ใช้ทีมเดียวกับเคสล่าสุดที่คุณส่ง"
     )
     .setFooter({ text: "ℹ️ ดูเวรกับเคสของตัวเอง · 🔒 ยอดเคสทุกคน เฉพาะแอดมิน · casebot v1.1" });
   // แบนเนอร์ต้องเป็นลิงก์รูป http(s) เท่านั้น ถ้าใส่ผิด (เช่น ใส่เป็น ID ห้อง) จะข้ามไปแทนที่จะทำให้แผงพัง
