@@ -499,7 +499,7 @@ async function handleSelectRegPosition(interaction) {
   // แจกยศเริ่มต้น (config.autoRoleIds) ให้สมาชิกใหม่ทันที
   const roleResult = await assignRoles(interaction, pending.discordId, config.autoRoleIds);
 
-  const resultLines = [`เพิ่มสมาชิก ${pending.discordTag} สำเร็จ! เลขประจำตัว #${data.badgeNumber} ตอนนี้สามารถกดปุ่ม "เข้าเวร" ได้แล้ว`];
+  const resultLines = [`เพิ่มสมาชิก ${pending.discordTag} สำเร็จ! เลขประจำตัว ${embeds.formatBadge(data.badgeNumber)} ตอนนี้สามารถกดปุ่ม "เข้าเวร" ได้แล้ว`];
   if (regNickname?.ok) resultLines.push(`ตั้งชื่อเล่นเป็น: ${regNickname.nickname}`);
   else if (regNickname) resultLines.push(`⚠️ ตั้งชื่อเล่นไม่สำเร็จ (${regNickname.reason}) กรุณาเปลี่ยนด้วยตนเอง`);
   if (roleResult?.added?.length) {

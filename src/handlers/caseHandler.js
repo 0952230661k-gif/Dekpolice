@@ -74,7 +74,7 @@ async function ownerInfo(guild, c) {
     const reg = await db.findMember(id).catch(() => null);
     if (reg) {
       const base = reg.position ? `[${reg.position}] ${reg.gameName}` : reg.gameName; // ขึ้นยศตามรายชื่อ
-      names[id] = reg.badgeNumber ? `#${reg.badgeNumber} ${base}` : base; // เลขประจำตัว → ยศ → ชื่อ
+      names[id] = reg.badgeNumber ? `${embeds.formatBadge(reg.badgeNumber)} ${base}` : base; // เลขประจำตัว → ยศ → ชื่อ
     }
   }
   return {

@@ -7,14 +7,21 @@ function formatSteamHex(steamHex) {
 }
 
 // ---------- Helper: ชื่อแสดงผลของสมาชิก ----------
-function memberDisplayName({ gameName, badgeNumber }) {
-  return badgeNumber ? `#${badgeNumber} ${gameName}` : gameName;
+// เลขประจำตัวแสดงเป็น [002] (เติม 0 ให้ครบ 3 หลักเฉพาะเลขล้วน ค่าที่เก็บในฐานข้อมูลยังเป็น 2)
+function formatBadge(badgeNumber) {
+  if (!badgeNumber) return "";
+  const n = String(badgeNumber);
+  return `[${/^\d+$/.test(n) ? n.padStart(3, "0") : n}]`;
 }
 
-// ---------- Helper: ชื่อเล่นในดิสคอร์ด รูปแบบ "#เลขประจำตัว [ตำแหน่ง] ชื่อ" ----------
+function memberDisplayName({ gameName, badgeNumber }) {
+  return badgeNumber ? `${formatBadge(badgeNumber)} ${gameName}` : gameName;
+}
+
+// ---------- Helper: ชื่อเล่นในดิสคอร์ด รูปแบบ "[002] [ตำแหน่ง] ชื่อ" ----------
 // ดิสคอร์ดจำกัด 32 ตัวอักษร ถ้ายาวเกินจะตัดที่ "ชื่อ" เท่านั้น เลขและตำแหน่งต้องอยู่ครบ
 function memberNickname({ badgeNumber, position, gameName }) {
-  const prefix = [badgeNumber ? `#${badgeNumber}` : null, position ? `[${position}]` : null].filter(Boolean).join(" ");
+  const prefix = [badgeNumber ? formatBadge(badgeNumber) : null, position ? `[${position}]` : null].filter(Boolean).join(" ");
   const full = prefix ? `${prefix} ${gameName}` : String(gameName);
   if (full.length <= 32) return full;
   const room = 32 - (prefix ? prefix.length + 1 : 0);
@@ -29,7 +36,7 @@ function registerEmbed({ discordName, gameName, position, addedBy, badgeNumber }
       { name: "Discord", value: discordName, inline: true },
       { name: "ชื่อ", value: gameName, inline: true },
       { name: "ตำแหน่ง", value: position, inline: true },
-      { name: "เลขประจำตัว", value: badgeNumber ? `#${badgeNumber}` : "-", inline: true }
+      { name: "เลขประจำตัว", value: badgeNumber ? formatBadge(badgeNumber) : "-", inline: true }
     )
     .setTimestamp();
 
@@ -263,7 +270,7 @@ function workInfoEmbed({ badgeNumber, displayName, avatarUrl, statusText, tenure
     .setTitle("ℹ️ ข้อมูลการทำงาน")
     .setDescription(
       `**สรุปข้อมูลของ ${displayName} ในปัจจุบัน**\n` +
-        `> เลขประจำตัว: \`${badgeNumber ? "#" + badgeNumber : "-"}\`\n> สถานะ: ${statusText}\n> อายุงาน: \`${tenureDays}\` วัน\n\n` +
+        `> เลขประจำตัว: \`${badgeNumber ? formatBadge(badgeNumber) : "-"}\`\n> สถานะ: ${statusText}\n> อายุงาน: \`${tenureDays}\` วัน\n\n` +
         `🕐 **เวลาการทำงาน**\n` +
         `> วันนี้: \`${fmt(hours.hoursToday)}\`\n> สัปดาห์นี้: \`${fmt(hours.hoursWeek)}\`\n> สะสมเดือนนี้: \`${fmt(hours.hoursMonth)}\`\n\n` +
         `🏆 **เคสสัปดาห์นี้**\n` +
@@ -497,6 +504,7 @@ function applicationResultEmbed(app, guildId) {
 }
 
 module.exports = {
+  formatBadge,
   memberDisplayName,
   memberNickname,
   registerEmbed,

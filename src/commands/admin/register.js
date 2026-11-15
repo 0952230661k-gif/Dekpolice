@@ -121,7 +121,7 @@ module.exports = {
 
     const roleResult = await assignAutoRoles(interaction, target.id);
 
-    const resultLines = [`เพิ่มสมาชิก ${target.tag} สำเร็จ! เลขประจำตัว #${data.badgeNumber} ตอนนี้สามารถใช้คำสั่ง /เข้าเวร ได้แล้ว`];
+    const resultLines = [`เพิ่มสมาชิก ${target.tag} สำเร็จ! เลขประจำตัว ${embeds.formatBadge(data.badgeNumber)} ตอนนี้สามารถใช้คำสั่ง /เข้าเวร ได้แล้ว`];
     if (nicknameResult?.ok) resultLines.push(`ตั้งชื่อเล่นเป็น: ${nicknameResult.nickname}`);
     else if (nicknameResult) resultLines.push(`⚠️ ตั้งชื่อเล่นไม่สำเร็จ (${nicknameResult.reason}) กรุณาเปลี่ยนด้วยตนเอง`);
     if (roleResult?.added?.length) {
