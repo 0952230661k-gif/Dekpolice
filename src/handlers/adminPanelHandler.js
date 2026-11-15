@@ -72,6 +72,129 @@ async function handleOnDuty(interaction) {
   });
 }
 
+// ---------- ปุ่ม: ตัดเวรค้าง (ตัดเป็น 0 ชม. ทันที) ----------
+
+function elapsedText(checkInIso) {
+  const mins = Math.max(0, Math.round(time.now().diff(dayjs(checkInIso), "minute", true)));
+  if (mins < 60) return `${mins} นาที`;
+  return `${Math.floor(mins / 60)} ชม. ${mins % 60} นาที`;
+}
+
+function cutDutyResultEmbed(title, desc, openRows) {
+  const lines = openRows.map((r) => `• <@${r.discordId}> (${r.name}) — เข้าเวรมาแล้ว ${elapsedText(r.checkIn)}`);
+  let text = lines.join("\n") || "-";
+  if (text.length > 1000) text = text.slice(0, 990) + "\n…";
+  return embeds.adminActionEmbed(title, desc, [{ name: "รายชื่อ", value: text }]);
+}
+
+async function handleCutDuty(interaction) {
+  const openList = await db.getAllOpenDuty();
+  if (openList.length === 0) {
+    return interaction.reply({
+      embeds: [embeds.adminActionEmbed("✂️ ตัดเวรค้าง", "ไม่มีใครกำลังเข้าเวรอยู่ ไม่มีอะไรให้ตัด")],
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+
+  const shown = openList.slice(0, 25); // select menu แสดงได้สูงสุด 25 ตัวเลือก (ถ้ามีเกินใช้ปุ่ม "ตัดทั้งหมด")
+  const select = new StringSelectMenuBuilder()
+    .setCustomId("ap_select_cutduty")
+    .setPlaceholder("เลือกคนที่จะตัดเวร (เลือกได้หลายคน)")
+    .setMinValues(1)
+    .setMaxValues(shown.length);
+  for (const r of shown) {
+    select.addOptions({
+      label: String(r.name || r.discordId).slice(0, 100),
+      description: `เข้าเวรมาแล้ว ${elapsedText(r.checkIn)}`.slice(0, 100),
+      value: r.discordId,
+    });
+  }
+
+  const allRow = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId("ap_cutduty_all")
+      .setLabel(`ตัดทั้งหมด (${openList.length} คน)`)
+      .setEmoji("✂️")
+      .setStyle(ButtonStyle.Danger)
+  );
+
+  await interaction.reply({
+    embeds: [
+      embeds.adminActionEmbed(
+        "✂️ ตัดเวรค้าง",
+        `มีคนเข้าเวรอยู่ ${openList.length} คน — เลือกคนที่จะตัด ระบบจะ**ตัดเป็น 0 ชั่วโมงทันที** (ไม่นับชั่วโมงของกะนี้) แล้วอัปเดตแผงเข้าเวร`
+      ),
+    ],
+    components: [new ActionRowBuilder().addComponents(select), allRow],
+    flags: MessageFlags.Ephemeral,
+  });
+}
+
+async function finishCutDuty(interaction, targetIds, openRows) {
+  const cut = await db.cutOpenDuty(targetIds);
+  const done = targetIds ? openRows.filter((r) => targetIds.includes(r.discordId)) : openRows;
+
+  if (cut === 0) {
+    return interaction.editReply({
+      content: null,
+      embeds: [embeds.errorEmbed("ไม่มีใครเข้าเวรค้างอยู่แล้ว (อาจมีคนออกเวรไปก่อนหน้านี้)")],
+      components: [],
+    });
+  }
+
+  const embed = cutDutyResultEmbed(
+    "✂️ ตัดเวรค้าง (0 ชม.)",
+    `ตัดเวรเป็น 0 ชั่วโมง ${done.length} คน เรียบร้อย — ดำเนินการโดย ${interaction.user.tag}`,
+    done
+  );
+  await interaction.editReply({ content: null, embeds: [embed], components: [] });
+  await sendLog(interaction.client, "แอดมิน", embed);
+  await panel.refreshPanel(interaction.client);
+}
+
+async function handleSelectCutDuty(interaction) {
+  await interaction.deferUpdate();
+  const openRows = await db.getAllOpenDuty();
+  return finishCutDuty(interaction, interaction.values, openRows);
+}
+
+async function handleCutDutyAll(interaction) {
+  const openList = await db.getAllOpenDuty();
+  if (openList.length === 0) {
+    return interaction.update({
+      embeds: [embeds.adminActionEmbed("✂️ ตัดเวรค้าง", "ไม่มีใครกำลังเข้าเวรอยู่แล้ว")],
+      components: [],
+    });
+  }
+  await interaction.update({
+    embeds: [
+      embeds.adminActionEmbed(
+        "⚠️ ยืนยันตัดเวรทุกคน",
+        `จะตัดเวรของทุกคนที่กำลังเข้าเวรอยู่ (${openList.length} คน) เป็น 0 ชั่วโมงทันที — ย้อนกลับไม่ได้`
+      ),
+    ],
+    components: [
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId("ap_cutduty_all_confirm").setLabel("ยืนยันตัดทั้งหมด").setEmoji("✂️").setStyle(ButtonStyle.Danger),
+        new ButtonBuilder().setCustomId("ap_cutduty_cancel").setLabel("ยกเลิก").setStyle(ButtonStyle.Secondary)
+      ),
+    ],
+  });
+}
+
+async function handleCutDutyAllConfirm(interaction) {
+  await interaction.deferUpdate();
+  const openRows = await db.getAllOpenDuty();
+  return finishCutDuty(interaction, null, openRows);
+}
+
+async function handleCutDutyCancel(interaction) {
+  await interaction.update({
+    embeds: [embeds.adminActionEmbed("ยกเลิกแล้ว", "ไม่มีการตัดเวรเกิดขึ้น")],
+    components: [],
+  });
+}
+
 async function handleSummary(interaction) {
   await interaction.deferReply();
 
@@ -291,6 +414,10 @@ async function handleButton(interaction) {
 
   if (id === "ap_onduty") return handleOnDuty(interaction);
   if (id === "ap_summary") return handleSummary(interaction);
+  if (id === "ap_cutduty") return handleCutDuty(interaction);
+  if (id === "ap_cutduty_all") return handleCutDutyAll(interaction);
+  if (id === "ap_cutduty_all_confirm") return handleCutDutyAllConfirm(interaction);
+  if (id === "ap_cutduty_cancel") return handleCutDutyCancel(interaction);
   if (id === "ap_postdutypanel") return handlePostDutyPanel(interaction);
   if (id === "ap_postroster") return handlePostRoster(interaction);
   if (id in USER_SELECT_META) return handleAskUser(interaction, id);
@@ -649,6 +776,7 @@ async function handleStringSelect(interaction) {
   if (await blockIfNotAdmin(interaction)) return;
 
   const id = interaction.customId;
+  if (id === "ap_select_cutduty") return handleSelectCutDuty(interaction);
   if (id === "ap_select_regposition") return handleSelectRegPosition(interaction);
   if (id === "ap_select_setposition") return handleSelectSetPosition(interaction);
   if (id === "ap_select_weeklyhistory") return handleSelectWeeklyHistory(interaction);

@@ -343,6 +343,26 @@ async function clearDutyStatus(discordId) {
 }
 
 /**
+ * แอดมินตัดเวรค้าง: ปิดแถวที่ยัง "เข้าเวร" ค้างอยู่ให้เป็น 'ล้างแล้ว (แอดมิน)' ทันที
+ * (ไม่นับชั่วโมงของกะนั้นเลย = 0 ชม. และไม่นับจำนวนครั้งเข้าเวร)
+ * discordIds = อาร์เรย์ discord id ที่จะตัด, ถ้าไม่ส่งมา (null) = ตัดทุกคนที่เข้าเวรค้างอยู่ — คืนค่าจำนวนแถวที่ถูกตัด
+ */
+async function cutOpenDuty(discordIds = null) {
+  await ready;
+  if (Array.isArray(discordIds)) {
+    if (discordIds.length === 0) return 0;
+    const marks = discordIds.map(() => "?").join(",");
+    const result = await client.execute({
+      sql: `UPDATE duty_log SET status = 'ล้างแล้ว (แอดมิน)' WHERE status = 'เข้าเวร' AND discord_id IN (${marks})`,
+      args: discordIds,
+    });
+    return Number(result.rowsAffected) || 0;
+  }
+  const result = await client.execute("UPDATE duty_log SET status = 'ล้างแล้ว (แอดมิน)' WHERE status = 'เข้าเวร'");
+  return Number(result.rowsAffected) || 0;
+}
+
+/**
  * ลบข้อมูล duty_log ที่ "ปิดรายการแล้ว" ทั้งหมดออกจากฐานข้อมูลจริงๆ
  * (สถานะ ออกเวร / ล้างแล้ว (แอดมิน) / ปรับเพิ่ม / ปรับลด)
  * จะไม่ลบแถวที่ยังมีสถานะ "เข้าเวร" (กำลังเข้าเวรค้างอยู่) เพื่อกันข้อมูลกะที่ทำงานอยู่หาย
@@ -750,6 +770,7 @@ module.exports = {
   addCheckIn,
   setCheckOut,
   clearDutyStatus,
+  cutOpenDuty,
   clearClosedDutyLogs,
   editDutyTime,
   addManualAdjustment,
