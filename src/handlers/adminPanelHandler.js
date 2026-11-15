@@ -197,7 +197,7 @@ async function handleModalCutDuty(interaction) {
 }
 
 async function handleSummary(interaction) {
-  await interaction.deferReply();
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   await weeklySummary.run(interaction);
 }
 

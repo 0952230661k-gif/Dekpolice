@@ -7,12 +7,10 @@ const { sendLog } = require("./permissions");
 /**
  * สรุปชั่วโมงเวรของสัปดาห์นี้ — ใช้ร่วมกันทั้งปุ่ม "สรุปสัปดาห์นี้" ในแผงแอดมิน และคำสั่ง /สรุปสัปดาห์
  *
- * ผลลัพธ์ส่งไป 2 ที่:
- *  1) ตอบกลับในห้องที่แอดมินกดมา (เหมือนเดิม)
- *  2) ห้อง log "สรุปสัปดาห์" ที่ตั้งไว้ใน config.json (logChannels["สรุปสัปดาห์"])
- *     — ถ้าแอดมินกดในห้องนั้นอยู่แล้วจะไม่ส่งซ้ำ
+ * ตัวสรุปจะถูกส่งเข้า "ห้อง log สรุปสัปดาห์" ที่ตั้งไว้ใน config.json (logChannels["สรุปสัปดาห์"]) เท่านั้น
+ * ไม่โพสต์ลงห้องที่แอดมินกด — แอดมินจะเห็นแค่ข้อความยืนยันแบบส่วนตัว (ephemeral) คนเดียว
  *
- * ต้องเรียก interaction.deferReply() มาก่อน
+ * ต้องเรียก interaction.deferReply({ flags: MessageFlags.Ephemeral }) มาก่อน
  */
 async function run(interaction) {
   const allLogs = await db.getDutyLogs();
@@ -46,7 +44,7 @@ async function run(interaction) {
 
   if (rows.length === 0) {
     return interaction.editReply({
-      embeds: [embeds.adminActionEmbed(title, "ยังไม่มีข้อมูลการเข้าเวรในสัปดาห์นี้")],
+      embeds: [embeds.adminActionEmbed(title, "ยังไม่มีข้อมูลการเข้าเวรในสัปดาห์นี้ (ไม่ได้ส่งเข้าห้องสรุป)")],
     });
   }
 
@@ -63,14 +61,18 @@ async function run(interaction) {
     fields
   );
 
-  // 1) ตอบในห้องที่แอดมินกด (เหมือนเดิม)
-  await interaction.editReply({ embeds: [embed] });
-
-  // 2) ส่งเข้าห้อง log สรุปสัปดาห์ (ข้ามถ้าห้องที่กดคือห้องเดียวกัน กันข้อความซ้ำ)
+  const sent = await sendLog(interaction.client, "สรุปสัปดาห์", embed);
   const logChannelId = config.logChannels?.["สรุปสัปดาห์"];
-  if (interaction.channelId !== logChannelId) {
-    await sendLog(interaction.client, "สรุปสัปดาห์", embed);
+
+  // ตอบแอดมินแบบส่วนตัว (เห็นคนเดียว ไม่โผล่ในห้องแผงควบคุม)
+  if (sent) {
+    return interaction.editReply({
+      embeds: [embeds.successEmbed(`ส่งสรุปสัปดาห์นี้ (${rangeText}) ไปที่ห้อง <#${logChannelId}> เรียบร้อยแล้ว (${rows.length} คน)`)],
+    });
   }
+  return interaction.editReply({
+    embeds: [embeds.errorEmbed('ส่งสรุปไม่สำเร็จ — ยังไม่ได้ตั้งห้อง logChannels["สรุปสัปดาห์"] ใน config.json หรือบอทไม่มีสิทธิ์ส่งข้อความในห้องนั้น')],
+  });
 }
 
 module.exports = { run };

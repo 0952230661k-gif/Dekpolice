@@ -17,7 +17,7 @@ module.exports = {
       });
     }
 
-    await interaction.deferReply();
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     await weeklySummary.run(interaction);
   },
 };

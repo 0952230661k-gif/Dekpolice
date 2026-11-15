@@ -8,12 +8,15 @@ function isAdmin(interaction) {
 
 async function sendLog(client, channelKey, embed) {
   const channelId = config.logChannels[channelKey];
-  if (!channelId || channelId.startsWith("ใส่_")) return; // ยังไม่ได้ตั้งค่า ข้ามไป
+  if (!channelId || channelId.startsWith("ใส่_") || channelId === "-") return false; // ยังไม่ได้ตั้งค่า ข้ามไป
   try {
     const channel = await client.channels.fetch(channelId);
-    if (channel) await channel.send({ embeds: [embed] });
+    if (!channel) return false;
+    await channel.send({ embeds: [embed] });
+    return true;
   } catch (err) {
     console.error(`ส่ง log ไปห้อง ${channelKey} ไม่สำเร็จ:`, err.message);
+    return false;
   }
 }
 
