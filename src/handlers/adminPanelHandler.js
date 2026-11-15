@@ -15,6 +15,7 @@ const { swapPositionRole, setNickname, assignRoles } = require("../utils/discord
 const pendingRegister = new Map(); // adminId -> { discordId, discordTag, gameName }
 const pendingSetPosition = new Map(); // adminId -> discordId
 const pendingRemoveMember = new Map(); // adminId -> discordId (รอยืนยันก่อนลบจริง)
+const pendingCutDuty = new Map(); // adminId -> { ids: string[] | null (null = ตัดทุกคน) } รอกรอกหมายเหตุใน modal
 
 // ---------- Helper: เช็คสิทธิ์แอดมินก่อนให้ใช้งานทุกปุ่ม/เมนู/modal ในแผงควบคุมแอดมิน ----------
 // คืนค่า true ถ้า "ไม่ใช่" แอดมิน (และได้ตอบ interaction แจ้งเตือนไปแล้ว) — ใช้ return early ที่ตัวเรียก
@@ -122,7 +123,7 @@ async function handleCutDuty(interaction) {
     embeds: [
       embeds.adminActionEmbed(
         "✂️ ตัดเวรค้าง",
-        `มีคนเข้าเวรอยู่ ${openList.length} คน — เลือกคนที่จะตัด ระบบจะ**ตัดเป็น 0 ชั่วโมงทันที** (ไม่นับชั่วโมงของกะนี้) แล้วอัปเดตแผงเข้าเวร`
+        `มีคนเข้าเวรอยู่ ${openList.length} คน — เลือกคนที่จะตัด แล้วระบบจะให้ใส่**หมายเหตุ** (จำเป็นต้องกรอก) จากนั้น**ตัดเป็น 0 ชั่วโมงทันที** (ไม่นับชั่วโมงของกะนี้)`
       ),
     ],
     components: [new ActionRowBuilder().addComponents(select), allRow],
@@ -130,15 +131,55 @@ async function handleCutDuty(interaction) {
   });
 }
 
-async function finishCutDuty(interaction, targetIds, openRows) {
-  const cut = await db.cutOpenDuty(targetIds);
-  const done = targetIds ? openRows.filter((r) => targetIds.includes(r.discordId)) : openRows;
+function cutDutyModal(isAll) {
+  const modal = new ModalBuilder()
+    .setCustomId("ap_modal_cutduty")
+    .setTitle(isAll ? "ตัดเวรทุกคน (0 ชม.)" : "ตัดเวรค้าง (0 ชม.)");
+  const noteInput = new TextInputBuilder()
+    .setCustomId("note")
+    .setLabel("หมายเหตุ (จำเป็น)")
+    .setPlaceholder("เช่น ลืมออกเวร / เน็ตหลุด / ออกเกมแล้วไม่ได้กดออกเวร")
+    .setStyle(TextInputStyle.Paragraph)
+    .setMinLength(1)
+    .setMaxLength(500)
+    .setRequired(true);
+  modal.addComponents(new ActionRowBuilder().addComponents(noteInput));
+  return modal;
+}
+
+// เลือกคนจาก select menu แล้ว → เปิด modal ให้กรอกหมายเหตุ (ยังไม่ตัดจนกว่าจะกรอกหมายเหตุแล้วกดส่ง)
+async function handleSelectCutDuty(interaction) {
+  pendingCutDuty.set(interaction.user.id, { ids: interaction.values });
+  return interaction.showModal(cutDutyModal(false));
+}
+
+// ปุ่ม "ตัดทั้งหมด" → เปิด modal ให้กรอกหมายเหตุเช่นกัน
+async function handleCutDutyAll(interaction) {
+  pendingCutDuty.set(interaction.user.id, { ids: null });
+  return interaction.showModal(cutDutyModal(true));
+}
+
+async function handleModalCutDuty(interaction) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  const pending = pendingCutDuty.get(interaction.user.id);
+  pendingCutDuty.delete(interaction.user.id);
+  if (!pending) {
+    return interaction.editReply({ embeds: [embeds.errorEmbed("หมดเวลาหรือไม่พบรายการที่เลือกไว้ กรุณากดปุ่ม แอดมิน แล้วเลือกใหม่อีกครั้ง")] });
+  }
+
+  const note = interaction.fields.getTextInputValue("note").trim();
+  if (!note) {
+    return interaction.editReply({ embeds: [embeds.errorEmbed("ต้องใส่หมายเหตุก่อนตัดเวร (ยังไม่มีการตัดเวรเกิดขึ้น) กรุณากดปุ่มใหม่อีกครั้ง")] });
+  }
+
+  const openRows = await db.getAllOpenDuty();
+  const cut = await db.cutOpenDuty(pending.ids, note);
+  const done = pending.ids ? openRows.filter((r) => pending.ids.includes(r.discordId)) : openRows;
 
   if (cut === 0) {
     return interaction.editReply({
-      content: null,
       embeds: [embeds.errorEmbed("ไม่มีใครเข้าเวรค้างอยู่แล้ว (อาจมีคนออกเวรไปก่อนหน้านี้)")],
-      components: [],
     });
   }
 
@@ -147,52 +188,11 @@ async function finishCutDuty(interaction, targetIds, openRows) {
     `ตัดเวรเป็น 0 ชั่วโมง ${done.length} คน เรียบร้อย — ดำเนินการโดย ${interaction.user.tag}`,
     done
   );
-  await interaction.editReply({ content: null, embeds: [embed], components: [] });
+  embed.addFields({ name: "หมายเหตุ", value: note.slice(0, 1000) });
+
+  await interaction.editReply({ embeds: [embed] });
   await sendLog(interaction.client, "แอดมิน", embed);
   await panel.refreshPanel(interaction.client);
-}
-
-async function handleSelectCutDuty(interaction) {
-  await interaction.deferUpdate();
-  const openRows = await db.getAllOpenDuty();
-  return finishCutDuty(interaction, interaction.values, openRows);
-}
-
-async function handleCutDutyAll(interaction) {
-  const openList = await db.getAllOpenDuty();
-  if (openList.length === 0) {
-    return interaction.update({
-      embeds: [embeds.adminActionEmbed("✂️ ตัดเวรค้าง", "ไม่มีใครกำลังเข้าเวรอยู่แล้ว")],
-      components: [],
-    });
-  }
-  await interaction.update({
-    embeds: [
-      embeds.adminActionEmbed(
-        "⚠️ ยืนยันตัดเวรทุกคน",
-        `จะตัดเวรของทุกคนที่กำลังเข้าเวรอยู่ (${openList.length} คน) เป็น 0 ชั่วโมงทันที — ย้อนกลับไม่ได้`
-      ),
-    ],
-    components: [
-      new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId("ap_cutduty_all_confirm").setLabel("ยืนยันตัดทั้งหมด").setEmoji("✂️").setStyle(ButtonStyle.Danger),
-        new ButtonBuilder().setCustomId("ap_cutduty_cancel").setLabel("ยกเลิก").setStyle(ButtonStyle.Secondary)
-      ),
-    ],
-  });
-}
-
-async function handleCutDutyAllConfirm(interaction) {
-  await interaction.deferUpdate();
-  const openRows = await db.getAllOpenDuty();
-  return finishCutDuty(interaction, null, openRows);
-}
-
-async function handleCutDutyCancel(interaction) {
-  await interaction.update({
-    embeds: [embeds.adminActionEmbed("ยกเลิกแล้ว", "ไม่มีการตัดเวรเกิดขึ้น")],
-    components: [],
-  });
 }
 
 async function handleSummary(interaction) {
@@ -416,8 +416,6 @@ async function handleButton(interaction) {
   if (id === "ap_summary") return handleSummary(interaction);
   if (id === "ap_cutduty") return handleCutDuty(interaction);
   if (id === "ap_cutduty_all") return handleCutDutyAll(interaction);
-  if (id === "ap_cutduty_all_confirm") return handleCutDutyAllConfirm(interaction);
-  if (id === "ap_cutduty_cancel") return handleCutDutyCancel(interaction);
   if (id === "ap_postdutypanel") return handlePostDutyPanel(interaction);
   if (id === "ap_postroster") return handlePostRoster(interaction);
   if (id in USER_SELECT_META) return handleAskUser(interaction, id);
@@ -1039,6 +1037,7 @@ async function handleModalSubmit(interaction) {
 
   const [action, targetId] = interaction.customId.split(":");
 
+  if (action === "ap_modal_cutduty") return handleModalCutDuty(interaction);
   if (action === "ap_modal_addhours") return handleModalAddHours(interaction, targetId);
   if (action === "ap_modal_subhours") return handleModalSubHours(interaction, targetId);
   if (action === "ap_modal_edittime") return handleModalEditTime(interaction, targetId);

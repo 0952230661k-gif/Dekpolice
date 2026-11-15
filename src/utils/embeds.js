@@ -192,7 +192,7 @@ function dutyPanelRow() {
     new ButtonBuilder().setCustomId("duty_afk").setLabel("วอ.12").setEmoji("📻").setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId("duty_back").setLabel("วอ.4").setEmoji("✅").setStyle(ButtonStyle.Primary),
     // ปุ่มสำหรับแอดมิน — คนที่ไม่มียศแอดมินกดแล้วจะได้ข้อความปฏิเสธ (เช็คใน adminPanelHandler)
-    new ButtonBuilder().setCustomId("ap_cutduty").setLabel("ตัดเวรค้าง").setEmoji("✂️").setStyle(ButtonStyle.Danger)
+    new ButtonBuilder().setCustomId("ap_cutduty").setLabel("แอดมิน").setEmoji("🛡️").setStyle(ButtonStyle.Danger)
   );
 }
 
