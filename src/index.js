@@ -122,14 +122,14 @@ client.on("interactionCreate", async (interaction) => {
             ephemeral: true,
           });
         }
-        await db.setAfk(interaction.user.id, goAfk);
+        const pausedMs = await db.setAfk(interaction.user.id, goAfk);
         await panel.refreshPanel(interaction.client);
         await interaction.reply({
           embeds: [
             embeds.successEmbed(
               goAfk
-                ? "ตั้งสถานะ วอ.12 (ไม่อยู่หน้าจอ) แล้ว — เวลายังเดินปกติ แต่ all จะไม่แท็กคุณ"
-                : "วอ.4 กลับมาเข้าเวรแล้ว"
+                ? "ตั้งสถานะ วอ.12 (ไม่อยู่หน้าจอ) แล้ว — เวลาเข้าเวรหยุดเดิน และ all จะไม่แท็กคุณ (กด วอ.4 เพื่อให้เวลาเดินต่อ)"
+                : `วอ.4 กลับมาเข้าเวรแล้ว — เวลาเดินต่อ (พักไป ${Math.floor(pausedMs / 60000)} นาที ไม่นับในชั่วโมงเวร)`
             ),
           ],
           ephemeral: true,

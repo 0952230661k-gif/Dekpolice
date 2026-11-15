@@ -38,7 +38,8 @@ const SCHEMA_STATEMENTS = [
     check_out TEXT,
     hours REAL,
     status TEXT,
-    note TEXT
+    note TEXT,
+    paused_ms INTEGER DEFAULT 0
   )`,
   `CREATE TABLE IF NOT EXISTS summary (
     discord_id TEXT PRIMARY KEY,
@@ -112,7 +113,8 @@ const SCHEMA_STATEMENTS = [
     cancel_reason TEXT
   )`,
   `CREATE TABLE IF NOT EXISTS afk_status (
-    discord_id TEXT PRIMARY KEY
+    discord_id TEXT PRIMARY KEY,
+    since TEXT
   )`,
 ];
 
@@ -124,6 +126,8 @@ const APPLICATIONS_MIGRATION_COLUMNS = [
   { name: "steam_link", ddl: "ALTER TABLE applications ADD COLUMN steam_link TEXT" },
   { name: "steam_hex", ddl: "ALTER TABLE applications ADD COLUMN steam_hex TEXT" },
   { name: "duty_log.note", ddl: "ALTER TABLE duty_log ADD COLUMN note TEXT" },
+  { name: "duty_log.paused_ms", ddl: "ALTER TABLE duty_log ADD COLUMN paused_ms INTEGER DEFAULT 0" },
+  { name: "afk_status.since", ddl: "ALTER TABLE afk_status ADD COLUMN since TEXT" },
   { name: "members.badge_number", ddl: "ALTER TABLE members ADD COLUMN badge_number TEXT" },
   // คอลัมน์ของตาราง cases (กรณีสร้างตารางไว้ก่อนมีระบบยกเลิกเคส)
   { name: "cases.status", ddl: "ALTER TABLE cases ADD COLUMN status TEXT DEFAULT 'active'" },
@@ -207,6 +211,7 @@ function rowToDuty(row) {
     checkOut: row.check_out ?? "-",
     hours: row.hours ?? "",
     status: row.status,
+    pausedMs: Number(row.paused_ms) || 0, // เวลาที่หยุดเดินสะสมจากการกด วอ.12 (มิลลิวินาที)
   };
 }
 
@@ -325,11 +330,11 @@ async function addCheckIn(data) {
   });
 }
 
-async function setCheckOut(rowNumber, checkOutIso, hours) {
+async function setCheckOut(rowNumber, checkOutIso, hours, pausedMs = null) {
   await ready;
   await client.execute({
-    sql: "UPDATE duty_log SET check_out = ?, hours = ?, status = 'ออกเวร' WHERE id = ?",
-    args: [checkOutIso, hours, rowNumber],
+    sql: "UPDATE duty_log SET check_out = ?, hours = ?, status = 'ออกเวร', paused_ms = COALESCE(?, paused_ms) WHERE id = ?",
+    args: [checkOutIso, hours, pausedMs, rowNumber],
   });
 }
 
@@ -359,12 +364,14 @@ async function cutOpenDuty(discordIds = null, note = null) {
       sql: `UPDATE duty_log SET status = 'ล้างแล้ว (แอดมิน)', note = ? WHERE status = 'เข้าเวร' AND discord_id IN (${marks})`,
       args: [note, ...discordIds],
     });
+    await client.execute({ sql: `DELETE FROM afk_status WHERE discord_id IN (${marks})`, args: discordIds });
     return Number(result.rowsAffected) || 0;
   }
   const result = await client.execute({
     sql: "UPDATE duty_log SET status = 'ล้างแล้ว (แอดมิน)', note = ? WHERE status = 'เข้าเวร'",
     args: [note],
   });
+  await client.execute("DELETE FROM afk_status");
   return Number(result.rowsAffected) || 0;
 }
 
@@ -742,13 +749,44 @@ async function getAfkIds() {
   return rows.map((r) => r.discord_id);
 }
 
+/**
+ * วอ.12 (isAfk = true): เริ่มหยุดเดินเวลา — บันทึกเวลาที่เริ่มพักไว้ใน afk_status.since
+ * วอ.4 (isAfk = false): เวลาเดินต่อ — เอาช่วงที่พักไปบวกเข้า paused_ms ของกะที่เปิดอยู่
+ * (ตอนออกเวร ชั่วโมง = เวลาทั้งหมด - paused_ms) คืนค่าจำนวนมิลลิวินาทีที่พักในรอบนี้
+ */
 async function setAfk(discordId, isAfk) {
   await ready;
   if (isAfk) {
-    await client.execute({ sql: "INSERT OR IGNORE INTO afk_status (discord_id) VALUES (?)", args: [discordId] });
-  } else {
-    await client.execute({ sql: "DELETE FROM afk_status WHERE discord_id = ?", args: [discordId] });
+    await client.execute({
+      sql: "INSERT OR IGNORE INTO afk_status (discord_id, since) VALUES (?, ?)",
+      args: [discordId, new Date().toISOString()],
+    });
+    return 0;
   }
+
+  const { rows } = await client.execute({ sql: "SELECT since FROM afk_status WHERE discord_id = ?", args: [discordId] });
+  const since = rows[0]?.since;
+  let pausedMs = 0;
+  if (since) {
+    pausedMs = Math.max(0, Date.now() - new Date(since).getTime());
+    await client.execute({
+      sql: `UPDATE duty_log SET paused_ms = COALESCE(paused_ms, 0) + ?
+            WHERE id = (SELECT id FROM duty_log WHERE discord_id = ? AND status = 'เข้าเวร' ORDER BY id DESC LIMIT 1)`,
+      args: [pausedMs, discordId],
+    });
+  }
+  await client.execute({ sql: "DELETE FROM afk_status WHERE discord_id = ?", args: [discordId] });
+  return pausedMs;
+}
+
+/** เวลาที่หยุดเดินทั้งหมดของกะที่เปิดอยู่ (มิลลิวินาที) = ที่สะสมไว้แล้ว + วอ.12 ที่ยังไม่ได้กด วอ.4 */
+async function getPausedMs(discordId) {
+  await ready;
+  const open = await findOpenDuty(discordId);
+  let total = open ? open.pausedMs : 0;
+  const { rows } = await client.execute({ sql: "SELECT since FROM afk_status WHERE discord_id = ?", args: [discordId] });
+  if (rows[0]?.since) total += Math.max(0, Date.now() - new Date(rows[0].since).getTime());
+  return total;
 }
 
 module.exports = {
@@ -764,6 +802,7 @@ module.exports = {
   deleteCase,
   getAfkIds,
   setAfk,
+  getPausedMs,
   findMember,
   addMember,
   getAllMembers,

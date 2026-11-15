@@ -63,9 +63,12 @@ async function checkOut(discordUser) {
   }
 
   const checkOutIso = time.nowIso();
-  const hours = time.hoursBetween(openDuty.checkIn, checkOutIso);
+  // หักเวลาที่กด วอ.12 (หยุดเดิน) ออกจากชั่วโมงเวร — รวมถึงกรณีที่ออกเวรทั้งที่ยังอยู่ วอ.12
+  const pausedMs = await db.getPausedMs(discordId);
+  const rawHours = time.hoursBetween(openDuty.checkIn, checkOutIso);
+  const hours = Math.max(0, Math.round((rawHours - pausedMs / 3600000) * 100) / 100);
 
-  await db.setCheckOut(openDuty._rowNumber, checkOutIso, hours);
+  await db.setCheckOut(openDuty._rowNumber, checkOutIso, hours, pausedMs);
   await db.setAfk(discordId, false);
 
   const member = await db.findMember(discordId);
