@@ -23,7 +23,7 @@ function todayStr() {
 
 function displayDateTime(iso) {
   if (!iso || iso === "-") return "-";
-  return dayjs(iso).tz(TZ).format("DD/MM/YYYY HH:mm");
+  return dayjs(iso).tz(TZ).format("DD/MM/YYYY HH:mm:ss");
 }
 
 // เหมือน displayDateTime แต่ใช้ พ.ศ. และมีวินาที ใช้กับข้อความรายชื่อ/ป้ายอัปเดตล่าสุด
@@ -37,7 +37,7 @@ function displayThaiDateTime(iso) {
 function hoursBetween(checkInIso, checkOutIso) {
   const diffMs = dayjs(checkOutIso).diff(dayjs(checkInIso));
   const hours = diffMs / (1000 * 60 * 60);
-  return Math.round(hours * 100) / 100;
+  return Math.round(hours * 1000000) / 1000000; // เก็บละเอียดถึง ~3.6 มิลลิวินาที ไม่ปัดเป็นเศษ 0.01 ชม. (36 วินาที)
 }
 
 // แปลงชั่วโมงแบบทศนิยม (เช่น 13.88) ให้เป็นข้อความไทย "13 ชม. 52 นาที 48 วินาที"
@@ -140,7 +140,7 @@ function summarizeLogsForWeek(logs, referenceDate) {
   }
 
   return {
-    hoursWeek: Math.round(week * 100) / 100,
+    hoursWeek: Math.round(week * 1000000) / 1000000,
     dutyCount,
   };
 }
@@ -167,9 +167,9 @@ function summarizeLogs(logs) {
   }
 
   return {
-    hoursToday: Math.round(today * 100) / 100,
-    hoursWeek: Math.round(week * 100) / 100,
-    hoursMonth: Math.round(month * 100) / 100,
+    hoursToday: Math.round(today * 1000000) / 1000000,
+    hoursWeek: Math.round(week * 1000000) / 1000000,
+    hoursMonth: Math.round(month * 1000000) / 1000000,
     dutyCount,
   };
 }

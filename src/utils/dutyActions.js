@@ -66,7 +66,7 @@ async function checkOut(discordUser) {
   // หักเวลาที่กด วอ.12 (หยุดเดิน) ออกจากชั่วโมงเวร — รวมถึงกรณีที่ออกเวรทั้งที่ยังอยู่ วอ.12
   const pausedMs = await db.getPausedMs(discordId);
   const rawHours = time.hoursBetween(openDuty.checkIn, checkOutIso);
-  const hours = Math.max(0, Math.round((rawHours - pausedMs / 3600000) * 100) / 100);
+  const hours = Math.max(0, Math.round((rawHours - pausedMs / 3600000) * 1000000) / 1000000);
 
   await db.setCheckOut(openDuty._rowNumber, checkOutIso, hours, pausedMs);
   await db.setAfk(discordId, false);
@@ -82,6 +82,7 @@ async function checkOut(discordUser) {
     checkIn: displayCheckIn,
     checkOut: displayCheckOut,
     hours,
+    pausedMs,
   });
 
   const logEmbed = embeds.checkOutLogEmbed({
@@ -91,6 +92,7 @@ async function checkOut(discordUser) {
     checkIn: displayCheckIn,
     checkOut: displayCheckOut,
     hours,
+    pausedMs,
   });
 
   return { ok: true, replyEmbed, logEmbed };

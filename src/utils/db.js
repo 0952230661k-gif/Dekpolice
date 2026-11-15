@@ -574,7 +574,7 @@ async function listWeeklyHistoryWeeks(limit = 25) {
   });
   return rows.map((r) => ({
     weekKey: r.week_key,
-    totalHours: Math.round((r.total_hours || 0) * 100) / 100,
+    totalHours: Math.round((r.total_hours || 0) * 1000000) / 1000000,
     memberCount: r.member_count,
   }));
 }

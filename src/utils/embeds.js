@@ -1,5 +1,6 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
 const config = require("../../config.json");
+const timeUtil = require("./time");
 
 /** จัดรูปแบบ Steam Hex ที่คำนวณไว้แล้วตอนยื่นใบสมัคร ให้อยู่ในโค้ดบล็อก หรือข้อความแจ้งถ้ายังไม่มีค่า (เช่น ใบสมัครเก่าก่อนมีระบบนี้) */
 function formatSteamHex(steamHex) {
@@ -74,7 +75,7 @@ function checkInEmbed({ discordUser, gameName, position, time, via }) {
   return embed;
 }
 
-function checkOutEmbed({ discordUser, gameName, position, checkIn, checkOut, hours, via }) {
+function checkOutEmbed({ discordUser, gameName, position, checkIn, checkOut, hours, via, pausedMs = 0 }) {
   const displayName = memberDisplayName({ gameName });
   const embed = new EmbedBuilder()
     .setColor(0xed4245)
@@ -89,9 +90,13 @@ function checkOutEmbed({ discordUser, gameName, position, checkIn, checkOut, hou
       { name: "ตำแหน่ง", value: position || "-", inline: true },
       { name: "เวลาเข้า", value: checkIn, inline: true },
       { name: "เวลาออก", value: checkOut, inline: true },
-      { name: "รวม", value: `${hours} ชั่วโมง`, inline: false }
+      { name: "รวม", value: timeUtil.formatDurationThai(hours), inline: false }
     )
     .setTimestamp();
+
+  if (pausedMs >= 1000) {
+    embed.addFields({ name: "หักเวลา วอ.12 (ไม่อยู่หน้าจอ)", value: timeUtil.formatDurationThai(pausedMs / 3600000), inline: false });
+  }
 
   if (discordUser) {
     embed.setAuthor({ name: discordUser.tag, iconURL: discordUser.displayAvatarURL() });
@@ -122,7 +127,7 @@ function checkInLogEmbed({ discordUser, gameName, position, time }) {
   return embed;
 }
 
-function checkOutLogEmbed({ discordUser, gameName, position, checkIn, checkOut, hours }) {
+function checkOutLogEmbed({ discordUser, gameName, position, checkIn, checkOut, hours, pausedMs = 0 }) {
   const displayName = memberDisplayName({ gameName });
   const embed = new EmbedBuilder()
     .setColor(0xed4245)
@@ -131,10 +136,14 @@ function checkOutLogEmbed({ discordUser, gameName, position, checkIn, checkOut, 
       { name: "ตำแหน่ง", value: position || "-", inline: true },
       { name: "เวลาเข้า", value: checkIn, inline: true },
       { name: "เวลาออก", value: checkOut, inline: true },
-      { name: "รวมชั่วโมง", value: `${hours} ชม.`, inline: true }
+      { name: "รวมชั่วโมง", value: timeUtil.formatDurationThai(hours), inline: true }
     )
     .setFooter({ text: "POLICE DUTY SYSTEM • Duty System" })
     .setTimestamp();
+
+  if (pausedMs >= 1000) {
+    embed.addFields({ name: "หักเวลา วอ.12", value: timeUtil.formatDurationThai(pausedMs / 3600000), inline: true });
+  }
 
   if (discordUser) embed.setThumbnail(discordUser.displayAvatarURL());
 
@@ -146,9 +155,9 @@ function hoursEmbed({ gameName, hoursToday, hoursWeek, hoursMonth, dutyCount }) 
     .setColor(0xfee75c)
     .setTitle(`⏱️ ชั่วโมงเข้าเวรของ ${memberDisplayName({ gameName })}`)
     .addFields(
-      { name: "วันนี้", value: `${hoursToday} ชม.`, inline: true },
-      { name: "สัปดาห์นี้", value: `${hoursWeek} ชม.`, inline: true },
-      { name: "เดือนนี้", value: `${hoursMonth} ชม.`, inline: true },
+      { name: "วันนี้", value: timeUtil.formatDurationThai(hoursToday), inline: true },
+      { name: "สัปดาห์นี้", value: timeUtil.formatDurationThai(hoursWeek), inline: true },
+      { name: "เดือนนี้", value: timeUtil.formatDurationThai(hoursMonth), inline: true },
       { name: "จำนวนครั้งที่เข้าเวร", value: `${dutyCount} ครั้ง`, inline: false }
     )
     .setTimestamp();

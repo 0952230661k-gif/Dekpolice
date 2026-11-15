@@ -47,7 +47,7 @@ async function buildCurrentSummary() {
     }
     if (hours === 0 && dutyCount === 0) continue;
     const name = logs[0]?.name || discordId;
-    rows.push({ discordId, name, hoursWeek: Math.round(hours * 100) / 100, dutyCount });
+    rows.push({ discordId, name, hoursWeek: Math.round(hours * 1000000) / 1000000, dutyCount });
   }
 
   rows.sort((a, b) => b.hoursWeek - a.hoursWeek);
