@@ -9,7 +9,7 @@ const weeklyReset = require("../utils/weeklyReset");
 const weeklySummary = require("../utils/weeklySummary");
 const config = require("../../config.json");
 const { sendLog, isAdmin } = require("../utils/permissions");
-const { swapPositionRole, setNickname, assignRoles } = require("../utils/discordSync");
+const { swapPositionRole, setNickname, assignRoles, rolesForNewMember } = require("../utils/discordSync");
 
 // เก็บสถานะชั่วคราวระหว่างขั้นตอนหลายสเต็ป (เฉพาะ "เพิ่มสมาชิก" และ "แก้ไขตำแหน่ง" ที่ต้องเลือกตำแหน่งต่อจาก modal)
 // key = discord user id ของแอดมินที่กำลังทำรายการ, จะถูกลบทิ้งทันทีที่ใช้เสร็จ
@@ -559,8 +559,12 @@ async function handleSelectRegPosition(interaction) {
   // ตั้งชื่อเล่นในดิสคอร์ด: #เลขประจำตัว [ตำแหน่ง] ชื่อ
   const regNickname = await setNickname(interaction, pending.discordId, embeds.memberNickname(data));
 
-  // แจกยศเริ่มต้น (config.autoRoleIds) ให้สมาชิกใหม่ทันที
-  const roleResult = await assignRoles(interaction, pending.discordId, config.autoRoleIds);
+  // แจกยศพื้นฐาน (config.autoRoleIds) + ยศของตำแหน่งที่เลือก (config.positionRoleIds) ให้สมาชิกใหม่ทันที
+  const roleResult = await assignRoles(
+    interaction,
+    pending.discordId,
+    rolesForNewMember(position, config.autoRoleIds, config.positionRoleIds)
+  );
 
   const resultLines = [`เพิ่มสมาชิก ${pending.discordTag} สำเร็จ! เลขประจำตัว ${embeds.formatBadge(data.badgeNumber)} ตอนนี้สามารถกดปุ่ม "เข้าเวร" ได้แล้ว`];
   if (regNickname?.ok) resultLines.push(`ตั้งชื่อเล่นเป็น: ${regNickname.nickname}`);

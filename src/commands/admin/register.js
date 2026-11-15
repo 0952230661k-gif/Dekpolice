@@ -5,47 +5,7 @@ const embeds = require("../../utils/embeds");
 const roster = require("../../utils/roster");
 const config = require("../../../config.json");
 const { isAdmin, sendLog } = require("../../utils/permissions");
-const { setNickname } = require("../../utils/discordSync");
-
-// แจกยศ (Role) ในดิสคอร์ดให้สมาชิกทันทีที่ถูกเพิ่มเข้าระบบ
-// อ่านรายชื่อยศจาก config.autoRoleIds (ใส่กี่ยศก็ได้)
-async function assignAutoRoles(interaction, discordId) {
-  const roleIds = (config.autoRoleIds || []).filter((id) => id && !id.startsWith("ใส่_"));
-  if (roleIds.length === 0) return null; // ยังไม่ได้ตั้งค่า ข้ามไปเงียบๆ
-
-  try {
-    const guild = interaction.guild;
-    if (!guild) return { ok: false, reason: "ไม่พบเซิร์ฟเวอร์ (ใช้นอกกิลด์)" };
-
-    const member = await guild.members.fetch(discordId).catch(() => null);
-    if (!member) {
-      return { ok: false, reason: "สมาชิกไม่ได้อยู่ในเซิร์ฟเวอร์แล้ว จึงแจกยศไม่ได้" };
-    }
-
-    const added = [];
-    const failed = [];
-
-    for (const roleId of roleIds) {
-      try {
-        const role = await guild.roles.fetch(roleId).catch(() => null);
-        if (!role) {
-          failed.push(`\`${roleId}\` (ไม่พบยศนี้)`);
-          continue;
-        }
-        await member.roles.add(role);
-        added.push(`<@&${roleId}>`);
-      } catch (err) {
-        // เกิดได้บ่อยตอนยศของบอทอยู่ต่ำกว่ายศเป้าหมาย หรือบอทไม่มีสิทธิ์ Manage Roles
-        failed.push(`<@&${roleId}> (${err.message})`);
-      }
-    }
-
-    return { ok: failed.length === 0, added, failed };
-  } catch (err) {
-    console.error(`แจกยศอัตโนมัติให้ ${discordId} ไม่สำเร็จ:`, err.message);
-    return { ok: false, reason: err.message };
-  }
-}
+const { setNickname, assignRoles, rolesForNewMember } = require("../../utils/discordSync");
 
 module.exports = {
   adminOnly: true,
@@ -119,7 +79,12 @@ module.exports = {
     // ตั้งชื่อเล่นในดิสคอร์ด: #เลขประจำตัว [ตำแหน่ง] ชื่อ
     const nicknameResult = await setNickname(interaction, target.id, embeds.memberNickname(data));
 
-    const roleResult = await assignAutoRoles(interaction, target.id);
+    // แจกยศพื้นฐาน (autoRoleIds) + ยศของตำแหน่งที่เลือก (positionRoleIds) ทันที
+    const roleResult = await assignRoles(
+      interaction,
+      target.id,
+      rolesForNewMember(position, config.autoRoleIds, config.positionRoleIds)
+    );
 
     const resultLines = [`เพิ่มสมาชิก ${target.tag} สำเร็จ! เลขประจำตัว ${embeds.formatBadge(data.badgeNumber)} ตอนนี้สามารถใช้คำสั่ง /เข้าเวร ได้แล้ว`];
     if (nicknameResult?.ok) resultLines.push(`ตั้งชื่อเล่นเป็น: ${nicknameResult.nickname}`);

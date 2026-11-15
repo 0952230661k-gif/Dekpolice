@@ -5,7 +5,7 @@ const embeds = require("../utils/embeds");
 const steamId = require("../utils/steamId");
 const config = require("../../config.json");
 const { isAdmin, sendLog } = require("../utils/permissions");
-const { setNickname, assignRoles } = require("../utils/discordSync");
+const { setNickname, assignRoles, rolesForNewMember } = require("../utils/discordSync");
 
 /** จัดรูปแบบ Steam Hex ที่คำนวณ/เก็บไว้แล้วให้อยู่ในโค้ดบล็อก หรือข้อความแจ้งถ้ายังไม่มีค่า */
 function formatSteamHex(steamHex) {
@@ -245,7 +245,11 @@ async function handleDecision(interaction) {
         console.error("อัปเดตห้องรายชื่อหลังอนุมัติใบสมัครไม่สำเร็จ:", err.message);
       }
 
-      roleResult = await assignRoles(interaction, application.discordId, config.autoRoleIds);
+      roleResult = await assignRoles(
+        interaction,
+        application.discordId,
+        rolesForNewMember(defaultPosition, config.autoRoleIds, config.positionRoleIds)
+      );
 
       // เปลี่ยนชื่อเล่นเป็นรูปแบบสมาชิกจริง: "#เลขประจำตัว [ตำแหน่ง] ชื่อในเกม"
       approveNicknameResult = await setNickname(

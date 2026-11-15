@@ -119,4 +119,20 @@ async function swapPositionRole(interaction, discordId, oldPosition, newPosition
   }
 }
 
-module.exports = { setNickname, assignRoles, swapPositionRole };
+// รายชื่อยศที่ต้องแจกให้ "สมาชิกใหม่" ตามตำแหน่งที่เลือกตอนเพิ่ม
+//  - ได้ยศพื้นฐาน (config.autoRoleIds) เหมือนเดิม
+//  - ได้ยศของตำแหน่งที่เลือกทันที (config.positionRoleIds[ตำแหน่ง])
+//  - ยศใน autoRoleIds ที่เป็นยศตำแหน่งอื่นอยู่แล้ว (เช่น ยศนักเรียน) จะไม่แจกซ้อน เพื่อไม่ให้ ผบ. ได้ยศนักเรียนติดมาด้วย
+//  - ถ้าตำแหน่งที่เลือกยังไม่ได้ผูกยศไว้ใน positionRoleIds จะแจกเฉพาะ autoRoleIds เหมือนเดิม
+function rolesForNewMember(position, autoRoleIds, positionRoleMap) {
+  const valid = (id) => id && !String(id).startsWith("ใส่_");
+  const auto = (autoRoleIds || []).filter(valid);
+  const map = positionRoleMap || {};
+  const positionRole = map[position];
+  if (!valid(positionRole)) return auto;
+  const allPositionRoles = new Set(Object.values(map).filter(valid));
+  const base = auto.filter((id) => !allPositionRoles.has(id));
+  return [...base, positionRole];
+}
+
+module.exports = { setNickname, assignRoles, swapPositionRole, rolesForNewMember };
