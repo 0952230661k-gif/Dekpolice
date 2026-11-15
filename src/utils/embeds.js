@@ -231,6 +231,8 @@ function caseEmbed(c, { ownerName, ownerAvatarUrl, imageName, names = {} } = {})
 
 function caseRow() {
   return new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId("case_helper_add").setLabel("เพิ่มผู้ช่วย").setEmoji("➕").setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId("case_helper_remove").setLabel("ลดผู้ช่วย").setEmoji("➖").setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId("case_edit").setLabel("แก้ไข").setEmoji("✏️").setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId("case_cancel").setLabel("ยกเลิกเคส").setEmoji("🚫").setStyle(ButtonStyle.Danger)
   );

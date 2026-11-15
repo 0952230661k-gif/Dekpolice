@@ -5,6 +5,8 @@ const {
   TextInputStyle,
   ActionRowBuilder,
   MessageFlags,
+  UserSelectMenuBuilder,
+  StringSelectMenuBuilder,
 } = require("discord.js");
 const config = require("../../config.json");
 const db = require("../utils/db");
@@ -249,6 +251,47 @@ async function handleButton(interaction) {
     });
   }
 
+  if (id === "case_helper_add") {
+    if (c.status !== "active") return;
+    const menu = new UserSelectMenuBuilder()
+      .setCustomId(`case_sel_add:${interaction.message.id}`)
+      .setPlaceholder("เลือกคนที่จะเพิ่มเป็นผู้ช่วยเหลือ (สูงสุด 10 คน)")
+      .setMinValues(1)
+      .setMaxValues(10);
+    return interaction.reply({
+      content: `➕ **เพิ่มผู้ช่วยเหลือ** ในเคส "${c.title}" — เลือกได้เฉพาะคนที่มีชื่อในรายชื่อ`,
+      components: [new ActionRowBuilder().addComponents(menu)],
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+
+  if (id === "case_helper_remove") {
+    if (c.status !== "active") return;
+    if (c.participants.length === 0) {
+      return interaction.reply({ embeds: [embeds.errorEmbed("เคสนี้ยังไม่มีผู้ช่วยเหลือให้ลดออก")], flags: MessageFlags.Ephemeral });
+    }
+    const list = c.participants.slice(0, 25); // เมนูเลือกได้สูงสุด 25 รายการ
+    const options = [];
+    for (const pid of list) {
+      const reg = await db.findMember(pid).catch(() => null);
+      options.push({
+        label: (reg ? `${reg.badgeNumber ? embeds.formatBadge(reg.badgeNumber) + " " : ""}${reg.gameName}` : pid).slice(0, 100),
+        value: pid,
+      });
+    }
+    const menu = new StringSelectMenuBuilder()
+      .setCustomId(`case_sel_remove:${interaction.message.id}`)
+      .setPlaceholder("เลือกคนที่จะลดออกจากผู้ช่วยเหลือ")
+      .setMinValues(1)
+      .setMaxValues(options.length)
+      .addOptions(options);
+    return interaction.reply({
+      content: `➖ **ลดผู้ช่วยเหลือ** ในเคส "${c.title}"`,
+      components: [new ActionRowBuilder().addComponents(menu)],
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+
   if (id === "case_cancel") {
     const modal = new ModalBuilder().setCustomId("case_modal_cancel").setTitle("ยกเลิกเคส");
     modal.addComponents(
@@ -279,6 +322,54 @@ async function handleButton(interaction) {
     );
     return interaction.showModal(modal);
   }
+}
+
+/** เมนูเลือกคนจากปุ่ม เพิ่ม/ลด ผู้ช่วยเหลือ (customId = case_sel_add:<messageId> / case_sel_remove:<messageId>) */
+async function handleSelect(interaction) {
+  const [kind, caseMessageId] = interaction.customId.split(":");
+  const c = await db.getCaseByMessage(caseMessageId);
+  if (!c || c.status !== "active") {
+    return interaction.update({ content: "❌ ไม่พบเคสนี้ หรือเคสถูกยกเลิกแล้ว", components: [] });
+  }
+  if (!canManage(interaction, c)) {
+    return interaction.update({ content: "❌ เฉพาะเจ้าของคดีหรือแอดมินเท่านั้น", components: [] });
+  }
+
+  let summary;
+  if (kind === "case_sel_add") {
+    const added = [];
+    const skippedUnregistered = [];
+    const already = [];
+    for (const pid of interaction.values) {
+      if (pid === c.ownerId || c.participants.includes(pid)) { already.push(pid); continue; }
+      if (!(await db.findMember(pid))) { skippedUnregistered.push(pid); continue; }
+      c.participants.push(pid);
+      added.push(pid);
+    }
+    const lines = [];
+    if (added.length) lines.push(`✅ เพิ่มแล้ว ${added.length} คน: ${added.map((x) => `<@${x}>`).join(" ")}`);
+    if (already.length) lines.push(`ℹ️ อยู่ในเคสอยู่แล้ว/เป็นเจ้าของเคส: ${already.map((x) => `<@${x}>`).join(" ")}`);
+    if (skippedUnregistered.length) lines.push(`❌ ไม่อยู่ในรายชื่อ เพิ่มไม่ได้: ${skippedUnregistered.map((x) => `<@${x}>`).join(" ")}`);
+    summary = lines.join("\n");
+  } else {
+    const removeSet = new Set(interaction.values);
+    c.participants = c.participants.filter((p) => !removeSet.has(p));
+    summary = `✅ ลดผู้ช่วยเหลือออก ${removeSet.size} คน: ${[...removeSet].map((x) => `<@${x}>`).join(" ")}`;
+  }
+
+  await db.updateCase(c.id, c);
+
+  // อัปเดตข้อความเคสเดิมในห้อง (รูปเดิมยังอยู่ ไม่ต้องอัปโหลดใหม่)
+  const info = await ownerInfo(interaction.guild, c);
+  const caseMessage = await interaction.channel.messages.fetch(caseMessageId).catch(() => null);
+  if (caseMessage) {
+    await caseMessage.edit({
+      embeds: [embeds.caseEmbed(c, { ...info, imageName: c.imageName })],
+      components: [embeds.caseRow()],
+      allowedMentions: { parse: [] },
+    });
+  }
+  await interaction.update({ content: summary, components: [], allowedMentions: { parse: [] } });
 }
 
 async function handleModalSubmit(interaction) {
@@ -323,4 +414,4 @@ async function handleModalSubmit(interaction) {
   });
 }
 
-module.exports = { handleMessage, handleButton, handleModalSubmit };
+module.exports = { handleMessage, handleButton, handleModalSubmit, handleSelect };

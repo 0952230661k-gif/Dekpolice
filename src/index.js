@@ -193,6 +193,19 @@ client.on("interactionCreate", async (interaction) => {
     return;
   }
 
+  if (
+    (interaction.isUserSelectMenu() || interaction.isStringSelectMenu()) &&
+    interaction.customId.startsWith("case_sel_")
+  ) {
+    try {
+      await caseHandler.handleSelect(interaction);
+    } catch (err) {
+      console.error(`เกิดข้อผิดพลาดในระบบบันทึกคดี (เมนู ${interaction.customId}):`, err);
+      await safeErrorReply(interaction);
+    }
+    return;
+  }
+
   if (interaction.isStringSelectMenu() && interaction.customId.startsWith("ap_select_")) {
     try {
       await adminPanelHandler.handleStringSelect(interaction);
