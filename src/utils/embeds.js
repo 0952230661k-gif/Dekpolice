@@ -243,7 +243,7 @@ function caseEmbed(c, { ownerName, ownerAvatarUrl, imageName, names = {} } = {})
   const embed = new EmbedBuilder()
     .setColor(cancelled ? 0xed4245 : 0x57f287)
     .setAuthor({ name: ownerName || "เจ้าหน้าที่" })
-    .setTitle(cancelled ? `❌ ยกเลิกแล้ว · ${c.title}` : `📌 บันทึกคดี: ${c.title}`)
+    .setTitle(cancelled ? `❌ ยกเลิกแล้ว · ${c.title}` : c.title)
     .setDescription(description)
     .setFooter({ text: cancelled ? `${dateText} · เคสนี้ไม่ถูกนับแล้ว` : `คดีที่ #${c.id} · ${dateText}` });
   if (ownerAvatarUrl) embed.setThumbnail(ownerAvatarUrl);
