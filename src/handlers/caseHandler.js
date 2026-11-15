@@ -23,27 +23,22 @@ const MENTION_RE = /<@!?(\d{15,25})>/g;
 /**
  * แปลงข้อความ 3 บรรทัดเป็นข้อมูลคดี
  *   บรรทัด 1: ชื่อคดี
- *   บรรทัด 2: ค่าปรับ (ไม่ใส่ก็ได้)
- *   บรรทัด 3: แท็กเพื่อนร่วมเคส — all = ทุกคนที่กำลังเข้าเวร, เดิม = ทีมเดียวกับเคสล่าสุดของคุณ
- * รองรับการเว้นบรรทัดที่สอง และคำว่า all หรือแท็กอยู่บรรทัดไหนก็ได้ตั้งแต่บรรทัดที่ 2
+ *   บรรทัด 2: แท็กเพื่อนร่วมเคส — all = ทุกคนที่กำลังเข้าเวร, เดิม = ทีมเดียวกับเคสล่าสุดของคุณ
+ * คำว่า all หรือแท็กอยู่บรรทัดไหนก็ได้ตั้งแต่บรรทัดที่ 2
+ * (ไม่มีระบบค่าปรับแล้ว — บรรทัดที่เป็นตัวเลขล้วนจากความเคยชินเก่าจะถูกข้ามไป)
  */
 async function parseCaseText(text, ownerId) {
   const lines = String(text || "").split("\n").map((l) => l.trim());
   const title = (lines[0] || "").replace(MENTION_RE, "").trim();
   const rest = lines.slice(1);
 
-  let fine = null;
   let wantAll = false;
   let wantSame = false;
   const ids = new Set();
 
   for (const line of rest) {
     if (!line) continue;
-    const plain = line.replace(/,/g, "");
-    if (fine === null && /^\d+(\.\d+)?$/.test(plain)) {
-      fine = Math.round(Number(plain));
-      continue;
-    }
+    if (/^[\d,.\s]+$/.test(line)) continue; // บรรทัดตัวเลขล้วน (เดิมคือค่าปรับ) ไม่ใช้แล้ว
     if (/(^|\s)all(\s|$)/i.test(line)) wantAll = true;
     if (/(^|\s)เดิม(\s|$)/.test(line)) wantSame = true;
     for (const m of line.matchAll(MENTION_RE)) ids.add(m[1]);
@@ -67,7 +62,7 @@ async function parseCaseText(text, ownerId) {
     if (await db.findMember(id)) participants.push(id);
     else unregistered.push(id);
   }
-  return { title, fine, participants, unregistered };
+  return { title, participants, unregistered };
 }
 
 async function ownerInfo(guild, c) {
@@ -119,7 +114,7 @@ async function handleMessage(message) {
     );
   }
   if (!parsed.title) {
-    return reject("⚠️ ต้องพิมพ์ชื่อคดีในบรรทัดแรก\n```\nชื่อคดี\nค่าปรับ (ไม่ใส่ก็ได้)\n@เพื่อนร่วมเคส  หรือพิมพ์ all / เดิม\n```");
+    return reject("⚠️ ต้องพิมพ์ชื่อคดีในบรรทัดแรก\n```\nชื่อคดี\n@เพื่อนร่วมเคส  หรือพิมพ์ all / เดิม\n```");
   }
 
   // ดาวน์โหลดรูปไว้ก่อนลบข้อความต้นฉบับ (ลบแล้วลิงก์รูปจะหมดอายุ)
@@ -142,7 +137,6 @@ async function handleMessage(message) {
     messageId: "pending",
     ownerId: message.author.id,
     title: parsed.title,
-    fine: parsed.fine,
     participants: parsed.participants,
     imageName,
     createdAt: new Date().toISOString(),
@@ -226,7 +220,7 @@ async function showAllTotals(interaction) {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const board = await caseStats.leaderboard();
   const lines = board.map(
-    (r) => `<@${r.id}> — สัปดาห์ \`${r.weekTotal}\` · เดือน \`${r.monthTotal}\` · รวม \`${r.total}\` · ปรับ \`${r.totalFine.toLocaleString("en-US")}\``
+    (r) => `<@${r.id}> — สัปดาห์ \`${r.weekTotal}\` · เดือน \`${r.monthTotal}\` · รวม \`${r.total}\``
   );
   let text = lines.join("\n") || "ยังไม่มีข้อมูลเคส";
   if (text.length > 3900) text = text.slice(0, 3900).replace(/\n[^\n]*$/, "") + "\n…";
@@ -360,9 +354,6 @@ async function handleButton(interaction) {
         new TextInputBuilder().setCustomId("title").setLabel("ชื่อคดี").setStyle(TextInputStyle.Short).setValue(c.title).setMaxLength(100).setRequired(true)
       ),
       new ActionRowBuilder().addComponents(
-        new TextInputBuilder().setCustomId("fine").setLabel("ค่าปรับ (ไม่ใส่ก็ได้)").setStyle(TextInputStyle.Short).setValue(c.fine ? String(c.fine) : "").setRequired(false)
-      ),
-      new ActionRowBuilder().addComponents(
         new TextInputBuilder()
           .setCustomId("partners")
           .setLabel("ผู้ช่วยเหลือ (แท็ก / all / เดิม)")
@@ -479,7 +470,7 @@ async function handleModalSubmit(interaction) {
   }
 
   const title = interaction.fields.getTextInputValue("title").trim();
-  const text = [title, interaction.fields.getTextInputValue("fine"), interaction.fields.getTextInputValue("partners")].join("\n");
+  const text = [title, interaction.fields.getTextInputValue("partners")].join("\n");
   const parsed = await parseCaseText(text, c.ownerId);
   if (parsed.unregistered.length > 0) {
     return interaction.reply({
@@ -488,7 +479,6 @@ async function handleModalSubmit(interaction) {
     });
   }
   c.title = parsed.title || c.title;
-  c.fine = parsed.fine;
   c.participants = parsed.participants;
   await db.updateCase(c.id, c);
   const info2 = await ownerInfo(interaction.guild, c);

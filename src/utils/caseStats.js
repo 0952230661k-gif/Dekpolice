@@ -26,7 +26,6 @@ function statsFor(cases, id) {
     weekTotal: w.length,
     monthTotal: m.length,
     total: active.length,
-    totalFine: active.reduce((sum, c) => sum + (c.fine || 0), 0),
   };
 }
 

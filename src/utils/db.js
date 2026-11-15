@@ -681,7 +681,6 @@ function rowToCase(row) {
     messageId: row.message_id,
     ownerId: row.owner_id,
     title: row.title,
-    fine: row.fine == null ? null : Number(row.fine),
     participants,
     imageName: row.image_name,
     createdAt: row.created_at,
@@ -695,9 +694,9 @@ function rowToCase(row) {
 async function addCase(c) {
   await ready;
   const res = await client.execute({
-    sql: `INSERT INTO cases (channel_id, message_id, owner_id, title, fine, participants, image_name, created_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    args: [c.channelId, c.messageId, c.ownerId, c.title, c.fine, JSON.stringify(c.participants), c.imageName || null, c.createdAt],
+    sql: `INSERT INTO cases (channel_id, message_id, owner_id, title, participants, image_name, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    args: [c.channelId, c.messageId, c.ownerId, c.title, JSON.stringify(c.participants), c.imageName || null, c.createdAt],
   });
   return Number(res.lastInsertRowid);
 }
@@ -713,11 +712,11 @@ async function getCaseByMessage(messageId) {
   return rowToCase(rows[0]);
 }
 
-async function updateCase(id, { title, fine, participants }) {
+async function updateCase(id, { title, participants }) {
   await ready;
   await client.execute({
-    sql: "UPDATE cases SET title = ?, fine = ?, participants = ? WHERE id = ?",
-    args: [title, fine, JSON.stringify(participants), id],
+    sql: "UPDATE cases SET title = ?, participants = ? WHERE id = ?",
+    args: [title, JSON.stringify(participants), id],
   });
 }
 
