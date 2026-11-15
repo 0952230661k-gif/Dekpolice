@@ -22,7 +22,7 @@ async function blockIfNotAdmin(interaction) {
   if (isAdmin(interaction)) return false;
 
   const denyReply = {
-    embeds: [embeds.errorEmbed("คุณไม่มีสิทธิ์ใช้งานแผงควบคุมแอดมิน")],
+    embeds: [embeds.errorEmbed("ปุ่มนี้ใช้ได้เฉพาะแอดมินเท่านั้น")],
     flags: MessageFlags.Ephemeral,
   };
 
@@ -72,7 +72,7 @@ async function handleOnDuty(interaction) {
   });
 }
 
-// ---------- ปุ่ม: ตัดเวรค้าง (ตัดเป็น 0 ชม. ทันที) ----------
+// ---------- ปุ่ม: ตัดเวรค้าง (ตัดเป็น 0 ชม. ทันที) — อยู่ที่แผงเข้าเวร ใช้ได้เฉพาะแอดมิน (เช็คสิทธิ์ใน handleButton) ----------
 
 function elapsedText(checkInIso) {
   const mins = Math.max(0, Math.round(time.now().diff(dayjs(checkInIso), "minute", true)));
