@@ -11,7 +11,7 @@ function adminPanelEmbed() {
     .setTitle("🛠️ แผงควบคุมแอดมิน")
     .setDescription(
       "ห้องนี้จำกัดเฉพาะแอดมิน — กดปุ่มด้านล่างแทนการพิมพ์คำสั่ง /\n\n" +
-        "**ข้อมูล:** 📋 คนเข้าเวรตอนนี้ / 📊 สรุปสัปดาห์นี้ / 📁 ส่งออก CSV\n" +
+        "**ข้อมูล:** 📋 คนเข้าเวรตอนนี้ / 📊 สรุปสัปดาห์นี้\n" +
         "**จัดการชั่วโมง/เวลา:** ➕ เพิ่ม / ➖ ลด / ✏️ แก้เวลา / 🧹 ล้างสถานะเวร\n" +
         "**จัดการสมาชิก:** 🆕 เพิ่มสมาชิก / 🎖️ แก้ไขตำแหน่ง / ✏️ แก้ไขชื่อ / 🗑️ ลบสมาชิก\n" +
         "**ระบบรายสัปดาห์:** 🧹 เคลียร์ฐานข้อมูลรายสัปดาห์ (สั่งเอง ไม่มีระบบอัตโนมัติ) / 📜 ประวัติสัปดาห์ก่อนหน้า"
@@ -23,8 +23,7 @@ function adminPanelEmbed() {
 function adminPanelRows() {
   const rowInfo = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId("ap_onduty").setLabel("คนเข้าเวรตอนนี้").setEmoji("📋").setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId("ap_summary").setLabel("สรุปสัปดาห์นี้").setEmoji("📊").setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId("ap_export").setLabel("ส่งออกข้อมูล CSV").setEmoji("📁").setStyle(ButtonStyle.Primary)
+    new ButtonBuilder().setCustomId("ap_summary").setLabel("สรุปสัปดาห์นี้").setEmoji("📊").setStyle(ButtonStyle.Primary)
   );
 
   const rowHours = new ActionRowBuilder().addComponents(

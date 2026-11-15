@@ -1,5 +1,5 @@
 const dayjs = require("dayjs");
-const { ActionRowBuilder, ButtonBuilder, ButtonStyle, UserSelectMenuBuilder, StringSelectMenuBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, AttachmentBuilder, MessageFlags } = require("discord.js");
+const { ActionRowBuilder, ButtonBuilder, ButtonStyle, UserSelectMenuBuilder, StringSelectMenuBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, MessageFlags } = require("discord.js");
 const db = require("../utils/db");
 const time = require("../utils/time");
 const embeds = require("../utils/embeds");
@@ -122,20 +122,6 @@ async function handleSummary(interaction) {
         fields
       ),
     ],
-  });
-}
-
-async function handleExport(interaction) {
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-  const { members, dutyLog, summary } = await db.exportAllCsv();
-  const files = [
-    new AttachmentBuilder(Buffer.from(members, "utf-8"), { name: "members.csv" }),
-    new AttachmentBuilder(Buffer.from(dutyLog, "utf-8"), { name: "duty_log.csv" }),
-    new AttachmentBuilder(Buffer.from(summary, "utf-8"), { name: "summary.csv" }),
-  ];
-  await interaction.editReply({
-    embeds: [embeds.successEmbed("ส่งออกข้อมูลทั้ง 3 ตารางเรียบร้อยแล้ว (แนบไฟล์ด้านล่าง)")],
-    files,
   });
 }
 
@@ -305,7 +291,6 @@ async function handleButton(interaction) {
 
   if (id === "ap_onduty") return handleOnDuty(interaction);
   if (id === "ap_summary") return handleSummary(interaction);
-  if (id === "ap_export") return handleExport(interaction);
   if (id === "ap_postdutypanel") return handlePostDutyPanel(interaction);
   if (id === "ap_postroster") return handlePostRoster(interaction);
   if (id in USER_SELECT_META) return handleAskUser(interaction, id);

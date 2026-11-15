@@ -8,7 +8,6 @@ const panel = require("./utils/panel");
 const applicationPanel = require("./utils/applicationPanel");
 const { sendLog } = require("./utils/permissions");
 const adminPanelHandler = require("./handlers/adminPanelHandler");
-const plateHandler = require("./handlers/plateHandler");
 const applicationHandler = require("./handlers/applicationHandler");
 const caseHandler = require("./handlers/caseHandler");
 const db = require("./utils/db");
@@ -162,16 +161,6 @@ client.on("interactionCreate", async (interaction) => {
       return;
     }
 
-    if (interaction.customId.startsWith("plate_")) {
-      try {
-        await plateHandler.handleButton(interaction);
-      } catch (err) {
-        console.error(`เกิดข้อผิดพลาดในระบบป้ายทะเบียน (ปุ่ม ${interaction.customId}):`, err);
-        await safeErrorReply(interaction);
-      }
-      return;
-    }
-
     if (interaction.customId.startsWith("form_")) {
       try {
         await applicationHandler.handleButton(interaction);
@@ -231,16 +220,6 @@ client.on("interactionCreate", async (interaction) => {
       await caseHandler.handleModalSubmit(interaction);
     } catch (err) {
       console.error(`เกิดข้อผิดพลาดในระบบบันทึกคดี (modal ${interaction.customId}):`, err);
-      await safeErrorReply(interaction);
-    }
-    return;
-  }
-
-  if (interaction.isModalSubmit() && interaction.customId.startsWith("plate_modal_")) {
-    try {
-      await plateHandler.handleModalSubmit(interaction);
-    } catch (err) {
-      console.error(`เกิดข้อผิดพลาดในระบบป้ายทะเบียน (modal ${interaction.customId}):`, err);
       await safeErrorReply(interaction);
     }
     return;
