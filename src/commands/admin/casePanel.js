@@ -27,7 +27,14 @@ module.exports = {
     }
     target = target || interaction.channel;
 
-    await target.send({ embeds: [embeds.casePanelEmbed()], components: [embeds.casePanelRow()] });
+    try {
+      await target.send({ embeds: [embeds.casePanelEmbed()], components: [embeds.casePanelRow()] });
+    } catch (err) {
+      console.error("โพสต์แผงเคสไม่สำเร็จ:", err);
+      return interaction.editReply({
+        embeds: [embeds.errorEmbed(`โพสต์แผงเคสในห้อง <#${target.id}> ไม่สำเร็จ: ${err.message}\nตรวจสอบว่าบอทมีสิทธิ์ดูห้อง ส่งข้อความ และฝัง embed ในห้องนี้`)],
+      });
+    }
     await interaction.editReply({ embeds: [embeds.successEmbed(`โพสต์แผงระบบส่งเคสในห้อง <#${target.id}> เรียบร้อยแล้ว`)] });
   },
 };

@@ -276,7 +276,12 @@ function casePanelEmbed() {
         "> พิมพ์ `เดิม` แทนบรรทัด 3 = ใช้ทีมเดียวกับเคสล่าสุดที่คุณส่ง"
     )
     .setFooter({ text: "ℹ️ ดูเวรกับเคสของตัวเอง · 🔒 ยอดเคสทุกคน เฉพาะแอดมิน · casebot v1.1" });
-  if (config.caseBannerUrl) embed.setImage(config.caseBannerUrl);
+  // แบนเนอร์ต้องเป็นลิงก์รูป http(s) เท่านั้น ถ้าใส่ผิด (เช่น ใส่เป็น ID ห้อง) จะข้ามไปแทนที่จะทำให้แผงพัง
+  if (/^https?:\/\//i.test(String(config.caseBannerUrl || ""))) {
+    embed.setImage(config.caseBannerUrl);
+  } else if (config.caseBannerUrl) {
+    console.warn("caseBannerUrl ใน config.json ไม่ใช่ลิงก์รูป (ต้องขึ้นต้นด้วย https://) จึงไม่แสดงแบนเนอร์");
+  }
   return embed;
 }
 
