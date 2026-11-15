@@ -165,15 +165,23 @@ const ready = (async () => {
 // ---------- แปลงชื่อคอลัมน์ snake_case (ในฐานข้อมูล) <-> camelCase (ที่ไฟล์คำสั่งใช้อยู่เดิม) ----------
 
 // ---------- เลขประจำตัว (badge number) ----------
-// ออกอัตโนมัติตอนสมัคร เรียง 1, 2, 3 ... ไม่ซ้ำกัน สมาชิกเดิมที่ยังไม่มีเลขจะได้รับเลขตามลำดับวันที่สมัคร
+// ออกอัตโนมัติตอนสมัคร โดยให้ "เลขน้อยที่สุดที่ว่าง" ก่อนเสมอ ไม่ซ้ำกัน
+// เช่น มี 001, 003 (002 ลาออกไปแล้ว) → คนใหม่ได้ 002, คนถัดไปได้ 004
+// สมาชิกเดิมที่ยังไม่มีเลขจะได้รับเลขตามลำดับวันที่สมัคร (เติมช่องว่างจากน้อยไปมากเช่นกัน)
+function smallestFreeNumber(usedValues) {
+  const used = new Set();
+  for (const v of usedValues) {
+    const str = String(v ?? "");
+    if (/^\d+$/.test(str)) used.add(parseInt(str, 10));
+  }
+  let n = 1;
+  while (used.has(n)) n++;
+  return String(n);
+}
+
 async function nextBadgeNumber() {
   const { rows } = await client.execute("SELECT badge_number FROM members WHERE badge_number IS NOT NULL AND badge_number != ''");
-  let max = 0;
-  for (const r of rows) {
-    const n = parseInt(r.badge_number, 10);
-    if (/^\d+$/.test(String(r.badge_number)) && n > max) max = n;
-  }
-  return String(max + 1);
+  return smallestFreeNumber(rows.map((r) => r.badge_number));
 }
 
 async function backfillBadgeNumbers() {
@@ -790,6 +798,7 @@ async function getPausedMs(discordId) {
 }
 
 module.exports = {
+  smallestFreeNumber,
   findMemberByBadgeNumber,
   updateMemberBadgeNumber,
   addCase,
