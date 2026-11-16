@@ -311,6 +311,53 @@ function casePanelRow() {
   );
 }
 
+/**
+ * สรุปเคสประจำสัปดาห์ (ส่งห้องสรุปเคสทุกวันอาทิตย์ 23:59) — คืนอาร์เรย์ embed (แบ่งหน้าเมื่อคนเยอะ เพราะ description จำกัด 4096 ตัวอักษร)
+ * summary มาจาก caseStats.weekSummary, rangeText = ช่วงวันที่ภาษาไทย
+ */
+function weeklyCaseSummaryEmbeds(summary, rangeText) {
+  const { rows, totals } = summary;
+  const medals = ["🥇", "🥈", "🥉"];
+  const head =
+    `**ช่วงสัปดาห์ ${rangeText}**\n` +
+    `> 📋 เคสทั้งหมด: \`${totals.cases}\` เคส\n` +
+    `> 🚨 คดีอุ้มห่อ: \`${totals.kidnap}\` เคส\n` +
+    `> 🚫 เคสที่ยกเลิก (ไม่นับ): \`${totals.cancelled}\` เคส\n` +
+    `> 👮 เจ้าหน้าที่ที่มีเคส: \`${totals.people}\` คน`;
+
+  const lines = rows.map((r, i) => {
+    const rank = medals[i] || `**${i + 1}.**`;
+    const kidnap = r.kidnap > 0 ? ` · 🚨 ${r.kidnap}` : "";
+    return `${rank} <@${r.id}> — รวม \`${r.total}\` (ทำเอง ${r.own} · ช่วย ${r.helped})${kidnap}`;
+  });
+
+  // แบ่งหน้า ≤ 3500 ตัวอักษรของรายชื่อต่อ embed
+  const pages = [];
+  let cur = [];
+  let len = 0;
+  for (const line of lines) {
+    if (len + line.length + 1 > 3500 && cur.length > 0) {
+      pages.push(cur);
+      cur = [];
+      len = 0;
+    }
+    cur.push(line);
+    len += line.length + 1;
+  }
+  if (cur.length > 0) pages.push(cur);
+  if (pages.length === 0) pages.push([]);
+
+  return pages.map((page, i) => {
+    const body = page.length > 0 ? page.join("\n") : "*ไม่มีเคสในสัปดาห์นี้*";
+    const embed = new EmbedBuilder()
+      .setColor(0xfee75c)
+      .setTitle(i === 0 ? "📋 สรุปเคสประจำสัปดาห์" : `📋 สรุปเคสประจำสัปดาห์ (ต่อ ${i + 1}/${pages.length})`)
+      .setDescription(i === 0 ? `${head}\n\n🏆 **อันดับ**\n${body}` : body)
+      .setFooter({ text: `ตัดรอบทุกวันอาทิตย์ 23:59 น. (เวลาไทย)${pages.length > 1 ? ` · หน้า ${i + 1}/${pages.length}` : ""}` });
+    return embed;
+  });
+}
+
 /** หน้า "ข้อมูลการทำงาน" ของตัวเอง (ส่งแบบเห็นคนเดียว) */
 function workInfoEmbed({ badgeNumber, displayName, avatarUrl, statusText, tenureDays, hours, cases, fmt }) {
   const embed = new EmbedBuilder()
@@ -515,6 +562,7 @@ module.exports = {
   dutyPanelEmbeds,
   dutyPanelRow,
   caseEmbed,
+  weeklyCaseSummaryEmbeds,
   caseRow,
   casePanelEmbed,
   casePanelRow,

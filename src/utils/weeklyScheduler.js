@@ -4,6 +4,7 @@ const embeds = require("./embeds");
 const panel = require("./panel");
 const weeklyReset = require("./weeklyReset");
 const { sendLog } = require("./permissions");
+const caseStats = require("./caseStats");
 
 /**
  * ตัดรอบเวรรายสัปดาห์อัตโนมัติ
@@ -88,6 +89,15 @@ async function runWeeklyCut(client, cutAt) {
         `ตัดรอบอัตโนมัติ (${weekKey}) ปิดเวรที่ค้างแล้ว แต่สรุปสัปดาห์/เคลียร์ฐานข้อมูลไม่สำเร็จ — กรุณาสั่ง /เคลียร์ฐานข้อมูลรายสัปดาห์ ด้วยตนเอง`
       )
     );
+  }
+
+  // สรุปเคสรายสัปดาห์ → ห้อง logChannels["สรุปเคส"] (ทำแยกจากสรุปเวร พังอันหนึ่งไม่กระทบอีกอัน)
+  try {
+    const summary = await caseStats.weekSummary(cutAt);
+    const pages = embeds.weeklyCaseSummaryEmbeds(summary, time.weekRangeThai(cutAt));
+    for (const embed of pages) await sendLog(client, "สรุปเคส", embed);
+  } catch (err) {
+    console.error("[ตัดรอบอัตโนมัติ] ส่งสรุปเคสรายสัปดาห์ไม่สำเร็จ:", err);
   }
 
   await panel.refreshPanel(client).catch(() => {});
