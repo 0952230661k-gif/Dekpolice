@@ -338,11 +338,11 @@ async function addCheckIn(data) {
   });
 }
 
-async function setCheckOut(rowNumber, checkOutIso, hours, pausedMs = null) {
+async function setCheckOut(rowNumber, checkOutIso, hours, pausedMs = null, note = null) {
   await ready;
   await client.execute({
-    sql: "UPDATE duty_log SET check_out = ?, hours = ?, status = 'ออกเวร', paused_ms = COALESCE(?, paused_ms) WHERE id = ?",
-    args: [checkOutIso, hours, pausedMs, rowNumber],
+    sql: "UPDATE duty_log SET check_out = ?, hours = ?, status = 'ออกเวร', paused_ms = COALESCE(?, paused_ms), note = COALESCE(?, note) WHERE id = ?",
+    args: [checkOutIso, hours, pausedMs, note, rowNumber],
   });
 }
 
@@ -786,6 +786,28 @@ async function setAfk(discordId, isAfk) {
   return pausedMs;
 }
 
+/** เวลาที่เริ่ม วอ.12 (ISO) ของสมาชิก หรือ null ถ้าไม่ได้อยู่ วอ.12 */
+async function getAfkSince(discordId) {
+  await ready;
+  const { rows } = await client.execute({ sql: "SELECT since FROM afk_status WHERE discord_id = ?", args: [discordId] });
+  return rows[0]?.since || null;
+}
+
+/** ลบสถานะ วอ.12 ของสมาชิกตรงๆ (ไม่คำนวณ/ไม่บวก paused_ms) — ใช้ตอนตัดรอบรายสัปดาห์อัตโนมัติ */
+async function clearAfk(discordId) {
+  await ready;
+  await client.execute({ sql: "DELETE FROM afk_status WHERE discord_id = ?", args: [discordId] });
+}
+
+/** ตั้งสถานะ วอ.12 โดยกำหนดเวลาเริ่มพักเอง (ใช้ตอนเปิดเวรต่อหลังตัดรอบ 00:00 วันจันทร์) */
+async function setAfkSince(discordId, sinceIso) {
+  await ready;
+  await client.execute({
+    sql: "INSERT OR REPLACE INTO afk_status (discord_id, since) VALUES (?, ?)",
+    args: [discordId, sinceIso],
+  });
+}
+
 /** เวลาที่หยุดเดินทั้งหมดของกะที่เปิดอยู่ (มิลลิวินาที) = ที่สะสมไว้แล้ว + วอ.12 ที่ยังไม่ได้กด วอ.4 */
 async function getPausedMs(discordId) {
   await ready;
@@ -811,6 +833,9 @@ module.exports = {
   getAfkIds,
   setAfk,
   getPausedMs,
+  clearAfk,
+  getAfkSince,
+  setAfkSince,
   findMember,
   addMember,
   getAllMembers,

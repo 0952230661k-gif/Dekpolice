@@ -4,8 +4,10 @@ const embeds = require("./embeds");
 const { sendLog } = require("./permissions");
 
 /**
- * ระบบเคลียร์ฐานข้อมูลเวรรายสัปดาห์ — แบบแอดมิน "สั่งเอง" เท่านั้น ไม่มีระบบอัตโนมัติ
+ * ระบบเคลียร์ฐานข้อมูลเวรรายสัปดาห์ — แอดมินสั่งเองได้ตลอด และมีตัวตัดรอบอัตโนมัติ 23:59 น. วันอาทิตย์
+ * (ดู weeklyScheduler.js ซึ่งเรียก runNow ตัวเดียวกันนี้ หลังปิดเวรที่ค้างอยู่ให้แล้ว)
  *
+ * (ข้อความด้านล่างเป็นประวัติการออกแบบเดิม)
  * (เดิมระบบนี้เช็คทุก 1 นาทีแล้วตัดสัปดาห์ให้อัตโนมัติตาม ISO week ปฏิทิน โดยไม่ลบข้อมูลเก่าออกจาก
  *  duty_log เลย — ตอนนี้เปลี่ยนใหม่ทั้งหมด: ไม่มีการเช็ค/รันอัตโนมัติอีกต่อไป แอดมินเป็นคนตัดสินใจเองว่า
  *  เมื่อไหร่ถือว่า "จบรอบ" แล้วสั่งเคลียร์ผ่านคำสั่ง /เคลียร์ฐานข้อมูลรายสัปดาห์ หรือปุ่มในแผงแอดมิน)
@@ -54,13 +56,21 @@ async function buildCurrentSummary() {
   return rows;
 }
 
-function buildSummaryEmbed(weekKey, rows, clearedCount) {
+function buildSummaryEmbed(weekKey, rows, clearedCount, opts = {}) {
   const rangeText = time.weekRangeThaiFromKey(weekKey);
-  const description =
+  const how = opts.auto ? "ตัดรอบอัตโนมัติ 23:59 น. วันอาทิตย์" : "สั่งเคลียร์ฐานข้อมูลด้วยตนเอง";
+  let description =
     rows.length === 0
       ? "ไม่มีข้อมูลการเข้าเวรที่ต้องสรุปในรอบนี้"
-      : `สรุปชั่วโมงเวรสะสมของสัปดาห์ (${rangeText}) — สั่งเคลียร์ฐานข้อมูลด้วยตนเอง บันทึกลงประวัติแล้ว` +
+      : `สรุปชั่วโมงเวรสะสมของสัปดาห์ (${rangeText}) — ${how} บันทึกลงประวัติแล้ว` +
         (clearedCount > 0 ? ` และลบข้อมูลที่ปิดรายการแล้ว ${clearedCount} รายการออกจากระบบเรียบร้อย` : "");
+  if (opts.carried && opts.carried.length > 0) {
+    const mentions = opts.carried.map((c) => `<@${c.discordId}>`).join(" ");
+    description +=
+      `\n\n⏱️ ตัดเวรที่ยังค้างอยู่ ${opts.carried.length} คน (นับชั่วโมงถึง 23:59 น. เข้ายอดสัปดาห์นี้) ` +
+      `และจะเปิดเวรต่อให้อัตโนมัติ 00:00 น. วันจันทร์ ไม่ต้องกดเข้าเวรใหม่: ${mentions}`;
+    if (description.length > 4000) description = description.slice(0, 3990) + "…";
+  }
 
   const fields = rows.slice(0, 25).map((r) => ({
     name: r.name,
@@ -76,7 +86,7 @@ function buildSummaryEmbed(weekKey, rows, clearedCount) {
  * สรุปยอด + สะสมลงประวัติของสัปดาห์นี้ + อัปเดตตาราง summary + ลบข้อมูลที่ปิดรายการแล้วออกจาก duty_log จริง
  * เรียกซ้ำได้ (เช่นสั่งเคลียร์หลายรอบในสัปดาห์เดียวกัน) ยอดในประวัติจะสะสมรวมกันไปเรื่อยๆ
  */
-async function runNow(client) {
+async function runNow(client, opts = {}) {
   const weekKey = time.isoWeekKey(time.now());
   const updatedAt = time.nowIso();
 
@@ -99,13 +109,13 @@ async function runNow(client) {
 
   const clearedCount = await db.clearClosedDutyLogs();
 
-  const embed = buildSummaryEmbed(weekKey, accumulatedRows, clearedCount);
+  const embed = buildSummaryEmbed(weekKey, accumulatedRows, clearedCount, opts);
   if (client) {
     await sendLog(client, "สรุปสัปดาห์", embed);
   }
 
   console.log(
-    `[เคลียร์ฐานข้อมูลรายสัปดาห์] แอดมินสั่งรันด้วยตนเองสำเร็จ (สัปดาห์ ${weekKey}) — ลบ ${clearedCount} แถวออกจาก duty_log`
+    `[เคลียร์ฐานข้อมูลรายสัปดาห์] ${opts.auto ? "ตัดรอบอัตโนมัติ" : "แอดมินสั่งรันด้วยตนเอง"} สำเร็จ (สัปดาห์ ${weekKey}) — ลบ ${clearedCount} แถวออกจาก duty_log`
   );
   return { weekKey, rows: accumulatedRows, embed, clearedCount };
 }

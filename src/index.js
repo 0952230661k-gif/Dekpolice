@@ -12,6 +12,7 @@ const adminPanelHandler = require("./handlers/adminPanelHandler");
 const applicationHandler = require("./handlers/applicationHandler");
 const caseHandler = require("./handlers/caseHandler");
 const db = require("./utils/db");
+const weeklyScheduler = require("./utils/weeklyScheduler");
 
 const client = new Client({
   intents: [
@@ -45,8 +46,9 @@ client.once("ready", async () => {
   console.log(`โหลดคำสั่งทั้งหมด ${client.commands.size} คำสั่ง`);
   await panel.refreshPanel(client); // ซิงก์แผงเข้าเวรที่ปักไว้ให้ตรงกับสถานะล่าสุดหลังบอทรีสตาร์ท
   await applicationPanel.refreshApplicationPanel(client); // ซิงก์แผงสมัครที่ปักไว้ให้ตรงกับ config ล่าสุด
-  // หมายเหตุ: ระบบเคลียร์ฐานข้อมูลรายสัปดาห์ (weeklyReset) เป็นแบบแอดมินสั่งเองเท่านั้น
-  // (ผ่านคำสั่ง /เคลียร์ฐานข้อมูลรายสัปดาห์ หรือปุ่มในแผงแอดมิน) จึงไม่มีการรันอัตโนมัติตอนบอทเริ่มทำงาน
+  // ตัดรอบเวรอัตโนมัติ: 23:59 น. วันอาทิตย์ ปิดเวรที่ค้าง + สรุปลงห้องสัปดาห์ / 00:00 น. วันจันทร์ เปิดเวรต่อให้
+  // (แอดมินยังสั่ง /เคลียร์ฐานข้อมูลรายสัปดาห์ เองได้เหมือนเดิม)
+  await weeklyScheduler.start(client);
 });
 
 client.on("messageCreate", async (message) => {
