@@ -217,6 +217,13 @@ async function showMyInfo(interaction) {
   const cases = await caseStats.myInfo(interaction.user.id);
 
   const open = await db.findOpenDuty(interaction.user.id);
+  if (open) {
+    // เวรที่ยังเปิดอยู่นับถึงเดี๋ยวนี้ด้วย (หักเวลา วอ.12) ไม่ต้องรอออกเวรก่อนถึงจะเห็นชั่วโมง
+    const live = time.liveOpenHours(open.checkIn, await db.getPausedMs(interaction.user.id));
+    hours.hoursToday += live.today;
+    hours.hoursWeek += live.week;
+    hours.hoursMonth += live.month;
+  }
   const afk = (await db.getAfkIds()).includes(interaction.user.id);
   const statusText = open ? (afk ? "💤 ไม่อยู่หน้าจอ" : "🟢 เข้าเวร") : "🔻 ออกเวร";
 

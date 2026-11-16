@@ -211,7 +211,27 @@ function summarizeLogs(logs) {
   };
 }
 
+/**
+ * ชั่วโมงของเวรที่ "ยังเปิดอยู่" นับถึงเดี๋ยวนี้ แยกเป็นวันนี้/สัปดาห์นี้/เดือนนี้ (ตัดตามขอบเขตวัน/สัปดาห์/เดือนไทย)
+ * หักเวลา วอ.12 (pausedMs) ออกจากแต่ละช่วง (ไม่เกินความยาวช่วงนั้น)
+ */
+function liveOpenHours(checkInIso, pausedMs = 0) {
+  const n = now();
+  const start = toTz(checkInIso);
+  const windowHours = (windowStart) => {
+    const from = start.isAfter(windowStart) ? start : windowStart;
+    const ms = Math.max(0, n.diff(from));
+    return Math.max(0, ms - Math.min(pausedMs || 0, ms)) / 3600000;
+  };
+  return {
+    today: windowHours(n.startOf("day")),
+    week: windowHours(n.startOf("isoWeek")),
+    month: windowHours(n.startOf("month")),
+  };
+}
+
 module.exports = {
+  liveOpenHours,
   TZ,
   toTz,
   now,
