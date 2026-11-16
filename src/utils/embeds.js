@@ -313,20 +313,34 @@ function casePanelRow() {
 
 /** หน้า "ข้อมูลการทำงาน" ของตัวเอง (ส่งแบบเห็นคนเดียว) */
 function workInfoEmbed({ badgeNumber, displayName, avatarUrl, statusText, tenureDays, hours, cases, fmt }) {
+  // จัดเป็นช่องเรียงแถวละ 3 คอลัมน์ ให้กวาดตาอ่านทีเดียวจบ: ตัวตน → เวลาทำงาน → เคส → อุ้มห่อ
+  const box = (v) => `\`${v}\``;
   const embed = new EmbedBuilder()
     .setColor(0x00b0f4)
     .setTitle("ℹ️ ข้อมูลการทำงาน")
-    .setDescription(
-      `**สรุปข้อมูลของ ${displayName} ในปัจจุบัน**\n` +
-        `> เลขประจำตัว: \`${badgeNumber ? formatBadge(badgeNumber) : "-"}\`\n> สถานะ: ${statusText}\n> อายุงาน: \`${tenureDays}\` วัน\n\n` +
-        `🕐 **เวลาการทำงาน**\n` +
-        `> วันนี้: \`${fmt(hours.hoursToday)}\`\n> สัปดาห์นี้: \`${fmt(hours.hoursWeek)}\`\n> สะสมเดือนนี้: \`${fmt(hours.hoursMonth)}\`\n\n` +
-        `🏆 **เคสสัปดาห์นี้**\n` +
-        `> ทำเอง: \`${cases.weekOwn}\` เคส\n> ช่วยเหลือ: \`${cases.weekHelped}\` เคส\n> รวม: \`${cases.weekTotal}\` เคส\n\n` +
-        `📈 **สะสม**\n` +
-        `> เคสเดือนนี้: \`${cases.monthTotal}\` เคส\n> เคสรวม: \`${cases.total}\` เคส\n\n` +
-        `🚨 **คดีอุ้มห่อ**\n` +
-        `> สัปดาห์นี้: \`${cases.weekKidnap || 0}\` เคส · เดือนนี้: \`${cases.monthKidnap || 0}\` เคส · รวม: \`${cases.totalKidnap || 0}\` เคส`
+    .setDescription(`**${displayName}**`)
+    .addFields(
+      { name: "🪪 เลขประจำตัว", value: box(badgeNumber ? formatBadge(badgeNumber) : "-"), inline: true },
+      { name: "📍 สถานะ", value: statusText, inline: true },
+      { name: "📅 อายุงาน", value: `${box(tenureDays)} วัน`, inline: true },
+
+      { name: "🕐 วันนี้", value: box(fmt(hours.hoursToday)), inline: true },
+      { name: "🗓️ สัปดาห์นี้", value: box(fmt(hours.hoursWeek)), inline: true },
+      { name: "📆 เดือนนี้", value: box(fmt(hours.hoursMonth)), inline: true },
+
+      {
+        name: "🏆 เคสสัปดาห์นี้",
+        value: `${box(cases.weekTotal)} เคส\nทำเอง ${box(cases.weekOwn)} · ช่วย ${box(cases.weekHelped)}`,
+        inline: true,
+      },
+      { name: "📈 เคสเดือนนี้", value: `${box(cases.monthTotal)} เคส`, inline: true },
+      { name: "🧮 เคสรวม", value: `${box(cases.total)} เคส`, inline: true },
+
+      {
+        name: "🚨 คดีอุ้มห่อ",
+        value: `สัปดาห์นี้ ${box(cases.weekKidnap || 0)} · เดือนนี้ ${box(cases.monthKidnap || 0)} · รวม ${box(cases.totalKidnap || 0)}`,
+        inline: false,
+      }
     )
     .setFooter({ text: "เคสนับรอบสัปดาห์ตัดคืนวันอาทิตย์ 23:59 น. (เวลาไทย)" })
     .setTimestamp();
