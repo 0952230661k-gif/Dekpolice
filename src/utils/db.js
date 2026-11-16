@@ -129,6 +129,8 @@ const APPLICATIONS_MIGRATION_COLUMNS = [
   { name: "duty_log.paused_ms", ddl: "ALTER TABLE duty_log ADD COLUMN paused_ms INTEGER DEFAULT 0" },
   { name: "afk_status.since", ddl: "ALTER TABLE afk_status ADD COLUMN since TEXT" },
   { name: "members.badge_number", ddl: "ALTER TABLE members ADD COLUMN badge_number TEXT" },
+  // ประเภทคดี (เช่น "อุ้มห่อ") — ว่าง = คดีทั่วไป
+  { name: "cases.case_type", ddl: "ALTER TABLE cases ADD COLUMN case_type TEXT" },
   // คอลัมน์ของตาราง cases (กรณีสร้างตารางไว้ก่อนมีระบบยกเลิกเคส)
   { name: "cases.status", ddl: "ALTER TABLE cases ADD COLUMN status TEXT DEFAULT 'active'" },
   { name: "cases.cancelled_by", ddl: "ALTER TABLE cases ADD COLUMN cancelled_by TEXT" },
@@ -683,6 +685,7 @@ function rowToCase(row) {
     title: row.title,
     participants,
     imageName: row.image_name,
+    caseType: row.case_type || null,
     createdAt: row.created_at,
     status: row.status || "active",
     cancelledBy: row.cancelled_by || null,
@@ -694,9 +697,9 @@ function rowToCase(row) {
 async function addCase(c) {
   await ready;
   const res = await client.execute({
-    sql: `INSERT INTO cases (channel_id, message_id, owner_id, title, participants, image_name, created_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    args: [c.channelId, c.messageId, c.ownerId, c.title, JSON.stringify(c.participants), c.imageName || null, c.createdAt],
+    sql: `INSERT INTO cases (channel_id, message_id, owner_id, title, participants, image_name, created_at, case_type)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    args: [c.channelId, c.messageId, c.ownerId, c.title, JSON.stringify(c.participants), c.imageName || null, c.createdAt, c.caseType || null],
   });
   return Number(res.lastInsertRowid);
 }

@@ -20,7 +20,11 @@ function statsFor(cases, id) {
   const active = cases.filter((c) => c.status === "active" && involves(c, id));
   const w = active.filter((c) => inRange(c, weekStart()));
   const m = active.filter((c) => inRange(c, monthStart()));
+  const kidnap = (list) => list.filter((c) => c.caseType === "อุ้มห่อ").length;
   return {
+    weekKidnap: kidnap(w),
+    monthKidnap: kidnap(m),
+    totalKidnap: kidnap(active),
     weekOwn: w.filter((c) => c.ownerId === id).length,
     weekHelped: w.filter((c) => c.ownerId !== id).length,
     weekTotal: w.length,

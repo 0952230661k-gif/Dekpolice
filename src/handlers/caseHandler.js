@@ -26,7 +26,9 @@ const MENTION_RE = /<@!?(\d{15,25})>/g;
  * จะแท็ก/พิมพ์ all/เดิม ไว้บรรทัดไหนก็ได้ ข้อความอื่นนอกจากนี้จะถูกข้าม
  * (ไม่มีระบบค่าปรับแล้ว — บรรทัดที่เป็นตัวเลขล้วนจากความเคยชินเก่าจะถูกข้ามไป)
  */
-async function parseCaseText(text, ownerId) {
+const KIDNAP_TYPE = "อุ้มห่อ";
+
+async function parseCaseText(text, ownerId, { kidnap: isKidnapRoom = false } = {}) {
   const lines = String(text || "").split("\n").map((l) => l.trim());
   const rest = lines;
 
@@ -42,6 +44,8 @@ async function parseCaseText(text, ownerId) {
     for (const m of line.matchAll(MENTION_RE)) ids.add(m[1]);
   }
 
+  // ห้องส่งเคสอุ้มห่อ: ดึงทุกคนที่เข้าเวรเข้าเคสเสมอ (เหมือน all) ไม่ต้องพิมพ์อะไรเพิ่ม
+  if (isKidnapRoom) wantAll = true;
   if (wantAll) {
     // all = ทุกคนที่เข้าเวรอยู่ (ไม่รวมคนที่อยู่ วอ.12) ยกเว้นคนที่ตั้งสถานะ วอ.12 (ไม่อยู่หน้าจอ)
     const afk = new Set(await db.getAfkIds());
@@ -60,7 +64,7 @@ async function parseCaseText(text, ownerId) {
     if (await db.findMember(id)) participants.push(id);
     else unregistered.push(id);
   }
-  return { participants, unregistered };
+  return { participants, unregistered, caseType: isKidnapRoom ? KIDNAP_TYPE : null };
 }
 
 async function ownerInfo(guild, c) {
@@ -81,11 +85,31 @@ async function ownerInfo(guild, c) {
   };
 }
 
+/** แบ่งรายชื่อแท็กเป็นก้อนละไม่เกิน maxLen ตัวอักษร (และไม่เกิน 100 คนต่อก้อนตามลิมิต allowedMentions) */
+function chunkMentions(ids, maxLen) {
+  const chunks = [];
+  let cur = { ids: [], text: "" };
+  for (const id of ids) {
+    const piece = `<@${id}>`;
+    if (cur.ids.length > 0 && (cur.text.length + piece.length + 1 > maxLen || cur.ids.length >= 100)) {
+      chunks.push(cur);
+      cur = { ids: [], text: "" };
+    }
+    cur.ids.push(id);
+    cur.text += (cur.text ? " " : "") + piece;
+  }
+  if (cur.ids.length > 0) chunks.push(cur);
+  return chunks;
+}
+
 /** ฟังข้อความในห้องบันทึกคดี แล้วแปลงเป็น embed + ปุ่ม */
 async function handleMessage(message) {
-  const channelId = config.caseChannelId;
-  if (!channelId || channelId.startsWith("ใส่_")) return;
-  if (message.author.bot || message.channelId !== channelId || !message.guild) return;
+  // มี 2 ห้อง: ห้องส่งเคสปกติ (caseChannelId) และห้องส่งเคสอุ้มห่อ (kidnapCaseChannelId) — ประเภทคดีดูจากห้องที่ส่ง
+  const validId = (id) => id && !String(id).startsWith("ใส่_");
+  const isKidnapRoom = validId(config.kidnapCaseChannelId) && message.channelId === config.kidnapCaseChannelId;
+  const isNormalRoom = validId(config.caseChannelId) && message.channelId === config.caseChannelId;
+  if (message.author.bot || !message.guild || (!isKidnapRoom && !isNormalRoom)) return;
+  const channelId = message.channelId;
 
   // ส่งไม่ผ่าน: ลบข้อความต้นฉบับ (รวมรูปที่แนบ) ทิ้งทุกกรณี แล้วแจ้งเหตุผลชั่วคราวพร้อมข้อความเดิม จะได้พิมพ์ส่งใหม่ได้
   const reject = async (text) => {
@@ -105,7 +129,7 @@ async function handleMessage(message) {
     return reject("❌ คุณยังไม่มีชื่อในรายชื่อ จึงส่งเคสไม่ได้ กรุณาติดต่อแอดมินเพื่อเพิ่มชื่อก่อน");
   }
 
-  const parsed = await parseCaseText(message.content, message.author.id);
+  const parsed = await parseCaseText(message.content, message.author.id, { kidnap: isKidnapRoom });
   if (parsed.unregistered.length > 0) {
     return reject(
       `❌ ส่งเคสไม่ได้ มีคนที่ไม่อยู่ในรายชื่อ: ${parsed.unregistered.map((id) => `<@${id}>`).join(" ")}\nแท็กเฉพาะคนที่มีชื่อในรายชื่อเท่านั้น หรือให้แอดมินเพิ่มชื่อก่อน`
@@ -113,7 +137,11 @@ async function handleMessage(message) {
   }
   // ไม่มีชื่อคดีแล้ว: ต้องมีอย่างใดอย่างหนึ่ง คือแนบรูป หรือแท็กผู้ช่วยเหลือ (กันข้อความคุยเล่นกลายเป็นเคส)
   if (parsed.participants.length === 0 && message.attachments.size === 0) {
-    return reject("⚠️ ต้องแนบรูป และ/หรือแท็กคนช่วยเหลือ\n```\n@คนที่มาช่วย  หรือพิมพ์ all / เดิม\n```");
+    return reject(
+      isKidnapRoom
+        ? "⚠️ ตอนนี้ไม่มีใครเข้าเวรให้ดึงเข้าเคส — ต้องแนบรูป และ/หรือแท็กคนช่วยเหลือ"
+        : "⚠️ ต้องแนบรูป และ/หรือแท็กคนช่วยเหลือ\n```\n@คนที่มาช่วย  หรือพิมพ์ all / เดิม\n```"
+    );
   }
 
   // ดาวน์โหลดรูปไว้ก่อนลบข้อความต้นฉบับ (ลบแล้วลิงก์รูปจะหมดอายุ)
@@ -137,6 +165,7 @@ async function handleMessage(message) {
     ownerId: message.author.id,
     title: "",
     participants: parsed.participants,
+    caseType: parsed.caseType,
     imageName,
     createdAt: new Date().toISOString(),
   };
@@ -144,12 +173,21 @@ async function handleMessage(message) {
   caseData.id = id;
 
   const info = await ownerInfo(message.guild, caseData);
+  // คดีอุ้มห่อ: แท็กเรียกทุกคนที่เข้าเวรตอนนั้นจริง (ปกติเคสไม่แจ้งเตือนใคร) — แบ่งข้อความตามลิมิต 2000 ตัวอักษรของ Discord
+  const pingChunks = caseData.caseType ? chunkMentions(caseData.participants, 1700) : [];
+  const header = caseData.caseType
+    ? `🚨 **คดี${caseData.caseType}** — เรียกทุกคนที่เข้าเวร (${caseData.participants.length} คน)${pingChunks[0] ? `\n${pingChunks[0].text}` : ""}`
+    : undefined;
   const sent = await message.channel.send({
+    content: header,
     embeds: [embeds.caseEmbed(caseData, { ...info, imageName })],
     components: [embeds.caseRow()],
     files,
-    allowedMentions: { parse: [] },
+    allowedMentions: pingChunks[0] ? { users: pingChunks[0].ids } : { parse: [] },
   });
+  for (const chunk of pingChunks.slice(1)) {
+    await message.channel.send({ content: chunk.text, allowedMentions: { users: chunk.ids } }).catch(() => {});
+  }
 
   await db.setCaseMessage(id, sent.id);
   await message.delete().catch(() => {}); // ลบข้อความต้นฉบับให้ห้องสะอาด
@@ -488,4 +526,4 @@ async function handleModalSubmit(interaction) {
   });
 }
 
-module.exports = { handleMessage, handleButton, handleModalSubmit, handleSelect };
+module.exports = { chunkMentions, parseCaseText, handleMessage, handleButton, handleModalSubmit, handleSelect };

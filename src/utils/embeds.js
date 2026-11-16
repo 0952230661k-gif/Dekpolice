@@ -228,6 +228,7 @@ function caseEmbed(c, { ownerName, ownerAvatarUrl, imageName, names = {} } = {})
   }
 
   let description =
+    (c.caseType ? `🏷️ **ประเภทคดี: ${c.caseType}**\n` : "") +
     `👮 ${nm(c.ownerId)}\n` +
     `🤝 **ผู้ช่วยเหลือ · ${c.participants.length} คน**\n${partners}`;
 
@@ -241,13 +242,15 @@ function caseEmbed(c, { ownerName, ownerAvatarUrl, imageName, names = {} } = {})
   const dateText = timeUtil.displayDate(c.createdAt);
 
   const embed = new EmbedBuilder()
-    .setColor(cancelled ? 0xed4245 : 0x57f287)
+    .setColor(cancelled ? 0xed4245 : c.caseType ? 0xfaa61a : 0x57f287)
     .setAuthor({ name: ownerName || "เจ้าหน้าที่" })
     .setDescription(description)
     .setFooter({ text: cancelled ? `${dateText} · เคสนี้ไม่ถูกนับแล้ว` : `คดีที่ #${c.id} · ${dateText}` });
   // ไม่มีชื่อคดีแล้ว: เคสใหม่ไม่มีหัวข้อ (เคสเก่าที่มีชื่อยังแสดงชื่อเดิม) เคสที่ยกเลิกขึ้นหัวข้อ "ยกเลิกแล้ว"
-  if (cancelled) embed.setTitle(c.title ? `❌ ยกเลิกแล้ว · ${c.title}` : "❌ ยกเลิกแล้ว");
+  const typeTitle = c.caseType ? `🚨 คดี${c.caseType}` : null;
+  if (cancelled) embed.setTitle(`❌ ยกเลิกแล้ว${c.title ? ` · ${c.title}` : typeTitle ? ` · ${typeTitle}` : ""}`);
   else if (c.title) embed.setTitle(c.title);
+  else if (typeTitle) embed.setTitle(typeTitle);
   if (ownerAvatarUrl) embed.setThumbnail(ownerAvatarUrl);
   if (imageName) embed.setImage(`attachment://${imageName}`);
   return embed;
@@ -264,7 +267,21 @@ function caseRow() {
 
 // ---------- แผงระบบส่งเคส (Case Report) ----------
 
-function casePanelEmbed() {
+function casePanelEmbed(kind = "normal") {
+  if (kind === "kidnap") {
+    const k = new EmbedBuilder()
+      .setColor(0xfaa61a)
+      .setTitle("🚨 ระบบส่งเคสอุ้มห่อ | Kidnap Case")
+      .setDescription(
+        "ทำคดีอุ้มห่อเสร็จแล้ว **แนบรูปลงในห้องนี้ได้เลย**\nบอทจะบันทึกเป็น **คดีอุ้มห่อ** ให้อัตโนมัติ\n\n" +
+          "> ดึง **ทุกคนที่เข้าเวรอยู่ตอนนั้น** เข้าเคสให้เอง และแท็กเรียกทุกคนทันที\n" +
+          "> คนที่อยู่ วอ.12 ไม่ถูกแท็ก · อยากเพิ่มใครแท็กต่อท้ายได้\n" +
+          "> เคสปกติให้ส่งที่ห้องส่งเคสอีกห้องหนึ่ง"
+      )
+      .setFooter({ text: "ℹ️ ดูเวรกับเคสของตัวเอง · 🔒 ยอดเคสทุกคน เฉพาะแอดมิน · casebot v1.2" });
+    if (/^https?:\/\//i.test(String(config.caseBannerUrl || ""))) k.setImage(config.caseBannerUrl);
+    return k;
+  }
   const embed = new EmbedBuilder()
     .setColor(0x00b0f4)
     .setTitle("📋 ระบบส่งเคส | Case Report")
@@ -273,7 +290,8 @@ function casePanelEmbed() {
         "```\n@คนที่มาช่วย\n```\n" +
         "> ไม่มีคนช่วย แนบรูปอย่างเดียวได้เลย\n" +
         "> พิมพ์ `all` แทนการแท็ก = ทุกคนที่กำลังเข้าเวรอยู่\n" +
-        "> พิมพ์ `เดิม` แทนการแท็ก = ใช้ทีมเดียวกับเคสล่าสุดที่คุณส่ง"
+        "> พิมพ์ `เดิม` แทนการแท็ก = ใช้ทีมเดียวกับเคสล่าสุดที่คุณส่ง\n" +
+        "> 🚨 **คดีอุ้มห่อ** ให้ส่งที่ห้องส่งเคสอุ้มห่อโดยเฉพาะ (บอทดึงคนเข้าเวรและแท็กให้เอง)"
     )
     .setFooter({ text: "ℹ️ ดูเวรกับเคสของตัวเอง · 🔒 ยอดเคสทุกคน เฉพาะแอดมิน · casebot v1.1" });
   // แบนเนอร์ต้องเป็นลิงก์รูป http(s) เท่านั้น ถ้าใส่ผิด (เช่น ใส่เป็น ID ห้อง) จะข้ามไปแทนที่จะทำให้แผงพัง
@@ -306,7 +324,9 @@ function workInfoEmbed({ badgeNumber, displayName, avatarUrl, statusText, tenure
         `🏆 **เคสสัปดาห์นี้**\n` +
         `> ทำเอง: \`${cases.weekOwn}\` เคส\n> ช่วยเหลือ: \`${cases.weekHelped}\` เคส\n> รวม: \`${cases.weekTotal}\` เคส\n\n` +
         `📈 **สะสม**\n` +
-        `> เคสเดือนนี้: \`${cases.monthTotal}\` เคส\n> เคสรวม: \`${cases.total}\` เคส`
+        `> เคสเดือนนี้: \`${cases.monthTotal}\` เคส\n> เคสรวม: \`${cases.total}\` เคส\n\n` +
+        `🚨 **คดีอุ้มห่อ**\n` +
+        `> สัปดาห์นี้: \`${cases.weekKidnap || 0}\` เคส · เดือนนี้: \`${cases.monthKidnap || 0}\` เคส · รวม: \`${cases.totalKidnap || 0}\` เคส`
     )
     .setFooter({ text: "เคสนับรอบสัปดาห์ตัดคืนวันอาทิตย์ 23:59 น. (เวลาไทย)" })
     .setTimestamp();
