@@ -1,3 +1,4 @@
+const config = require("../../config.json");
 const db = require("./db");
 const time = require("./time");
 const embeds = require("./embeds");
@@ -5,6 +6,7 @@ const panel = require("./panel");
 const weeklyReset = require("./weeklyReset");
 const { sendLog } = require("./permissions");
 const caseStats = require("./caseStats");
+const { EmbedBuilder } = require("discord.js");
 
 /**
  * ตัดรอบเวรรายสัปดาห์อัตโนมัติ
@@ -40,7 +42,7 @@ function cutTimeOf(d) {
 }
 
 /** ปิดเวรที่ค้างอยู่ทั้งหมด ณ เวลา cutAt คืนรายชื่อคนที่ต้องเปิดต่อ */
-async function cutOpenSessions(cutAt) {
+async function cutOpenSessions(cutAt, note = "ตัดรอบสัปดาห์อัตโนมัติ 23:59 (เปิดเวรต่อ 00:00)") {
   const cutIso = cutAt.toISOString();
   const open = await db.getAllOpenDuty();
   const afkSince = new Map();
@@ -61,9 +63,9 @@ async function cutOpenSessions(cutAt) {
     const rawHours = time.hoursBetween(duty.checkIn, cutIso);
     const hours = Math.max(0, Math.round((rawHours - pausedMs / 3600000) * 1000000) / 1000000);
 
-    await db.setCheckOut(duty._rowNumber, cutIso, hours, pausedMs, "ตัดรอบสัปดาห์อัตโนมัติ 23:59 (เปิดเวรต่อ 00:00)");
+    await db.setCheckOut(duty._rowNumber, cutIso, hours, pausedMs, note);
     await db.clearAfk(duty.discordId);
-    carried.push({ discordId: duty.discordId, name: duty.name, afk: isAfk });
+    carried.push({ discordId: duty.discordId, name: duty.name, afk: isAfk, hours, checkIn: duty.checkIn });
   }
   return carried;
 }
@@ -148,6 +150,70 @@ async function resumeIfDue(client) {
   console.log(`[ตัดรอบอัตโนมัติ] เปิดเวรต่อ 00:00 วันจันทร์ ${resumed} คน`);
 }
 
+// ---------- ตัดออกเวรอัตโนมัติรายวัน (config.dailyAutoCutTimes เช่น 06:00 และ 17:00) ----------
+// ทุกคนที่ยังเข้าเวรค้างตอนถึงเวลา จะถูกออกเวรให้เหมือนกดออกเวรเอง (คิดชั่วโมงถึงเวลานั้น หักเวลา วอ.12) และไม่เปิดเวรต่อ
+
+const KEY_DAILY = "daily_autocut_last"; // เวลาตัดรอบล่าสุดที่ทำแล้ว (ISO)
+
+function dailyTimes() {
+  const raw = Array.isArray(config.dailyAutoCutTimes) ? config.dailyAutoCutTimes : [];
+  return raw
+    .map((t) => /^(\d{1,2}):(\d{2})$/.exec(String(t).trim()))
+    .filter(Boolean)
+    .map((m) => ({ h: Number(m[1]), m: Number(m[2]) }))
+    .filter((t) => t.h < 24 && t.m < 60);
+}
+
+/** เวลาตัดรอบรายวันล่าสุดที่ผ่านมาแล้ว (≤ now) หรือ null ถ้าไม่ได้ตั้งเวลาไว้ */
+function latestDailySlot(now) {
+  const slots = [];
+  for (const dayOffset of [0, -1]) {
+    for (const t of dailyTimes()) {
+      slots.push(now.add(dayOffset, "day").startOf("day").hour(t.h).minute(t.m).second(0).millisecond(0));
+    }
+  }
+  const passed = slots.filter((s) => !s.isAfter(now)).sort((a, b) => b.valueOf() - a.valueOf());
+  return passed[0] || null;
+}
+
+async function runDailyCut(client, cutAt) {
+  const label = cutAt.format("HH:mm");
+  const cut = await cutOpenSessions(cutAt, `ตัดออกเวรอัตโนมัติ ${label}`);
+  console.log(`[ตัดออกเวรอัตโนมัติ] ${label} — ออกเวรให้ ${cut.length} คน`);
+  if (cut.length === 0) return;
+
+  const lines = [];
+  let len = 0;
+  for (const c of cut) {
+    const line = `> <@${c.discordId}> — ${time.formatDurationThai(c.hours)}`;
+    if (len + line.length > 3500) {
+      lines.push(`> … และอีก ${cut.length - lines.length} คน`);
+      break;
+    }
+    lines.push(line);
+    len += line.length + 1;
+  }
+  const embed = new EmbedBuilder()
+    .setColor(0xed4245)
+    .setTitle(`⏰ ตัดออกเวรอัตโนมัติ ${label} น.`)
+    .setDescription(`บอทออกเวรให้ผู้ที่เข้าเวรค้างอยู่ ${cut.length} คน (นับชั่วโมงถึง ${label} น.)\n\n${lines.join("\n")}`)
+    .setFooter({ text: "POLICE DUTY SYSTEM • Duty System" })
+    .setTimestamp();
+  await sendLog(client, "ออกเวร", embed);
+  await panel.refreshPanel(client).catch(() => {});
+}
+
+async function dailyCutIfDue(client) {
+  if (dailyTimes().length === 0) return;
+  const slot = latestDailySlot(time.now());
+  if (!slot) return;
+  const iso = slot.toISOString();
+  if ((await db.getState(KEY_DAILY)) === iso) return;
+  // บันทึกก่อนตัด กันตัดซ้ำถ้ามี tick ซ้อน/รีสตาร์ท (ถ้าบอทออฟไลน์ตอนนั้น จะตัดย้อนที่เวลาเดิมให้ตอนกลับมา — กะที่เริ่มหลังเวลาตัดไม่ถูกแตะ)
+  await db.setState(KEY_DAILY, iso);
+  await runDailyCut(client, slot);
+}
+
 async function tick(client) {
   if (running) return;
   running = true;
@@ -173,6 +239,7 @@ async function tick(client) {
     }
 
     await resumeIfDue(client);
+    await dailyCutIfDue(client);
   } catch (err) {
     console.error("[ตัดรอบอัตโนมัติ] เกิดข้อผิดพลาด:", err);
   } finally {
@@ -185,9 +252,15 @@ async function start(client) {
   if (!(await db.getState(KEY_DONE))) {
     await db.setState(KEY_DONE, weekKeyOf(time.now().subtract(1, "week")));
   }
+  // ครั้งแรกที่ deploy: ถือว่ารอบตัดรายวันล่าสุดผ่านไปแล้ว (ไม่ตัดย้อนหลังตอนเพิ่งอัปเดตบอท)
+  if (!(await db.getState(KEY_DAILY)) && dailyTimes().length > 0) {
+    const slot = latestDailySlot(time.now());
+    if (slot) await db.setState(KEY_DAILY, slot.toISOString());
+  }
   await tick(client);
   setInterval(() => tick(client), TICK_MS);
   console.log("[ตัดรอบอัตโนมัติ] เปิดใช้งาน: ตัดเวร 23:59 น. วันอาทิตย์ / เปิดเวรต่อ 00:00 น. วันจันทร์");
+  console.log(`[ตัดออกเวรอัตโนมัติ] รายวัน: ${dailyTimes().map((t) => String(t.h).padStart(2, "0") + ":" + String(t.m).padStart(2, "0")).join(", ") || "ปิด"}`);
 }
 
-module.exports = { start, tick, runWeeklyCut, resumeIfDue, cutTimeOf };
+module.exports = { latestDailySlot, runDailyCut, start, tick, runWeeklyCut, resumeIfDue, cutTimeOf };
