@@ -314,7 +314,7 @@ async function showPersonDetail(interaction) {
   return interaction.update({ content: "", embeds: [embed], components: [findPersonMenu()] });
 }
 
-const ALL_PAGE_SIZE = 15;
+const ALL_PAGE_SIZE = 10;
 
 /** หน้า "ยอดเคสทุกคน" (แอดมิน) แบ่งหน้าละ 15 คน เพื่อให้เห็นครบทุกคนโดยไม่ถูกตัดท้าย */
 async function buildAllTotalsUi(page) {
@@ -327,8 +327,12 @@ async function buildAllTotalsUi(page) {
   const lines = rows.slice(page * ALL_PAGE_SIZE, (page + 1) * ALL_PAGE_SIZE).map((r, i) => {
     const n = page * ALL_PAGE_SIZE + i;
     const rank = medals[n] || `**${n + 1}.**`;
-    const kidnap = r.totalKidnap > 0 ? ` · 🚨 ${r.totalKidnap}` : "";
-    return `${rank} <@${r.id}> — **${r.total}** เคส (ทำเอง ${r.own} · ช่วย ${r.total - r.own})${kidnap} · สัปดาห์ ${r.weekTotal} · เดือน ${r.monthTotal}`;
+    const kidnap = r.totalKidnap > 0 ? ` · 🚨 อุ้มห่อ ${r.totalKidnap}` : "";
+    // บรรทัดแรก: ลำดับ + ยอดรวม + ชื่อ / บรรทัดรอง: รายละเอียด (สั้นพอไม่ตัดบรรทัด)
+    return (
+      `${rank} **${r.total}** เคส · <@${r.id}>\n` +
+      `┗ ทำเอง ${r.own} · ช่วย ${r.total - r.own} · สัปดาห์ ${r.weekTotal} · เดือน ${r.monthTotal}${kidnap}`
+    );
   });
   if (page === pages - 1 && zero.length > 0) {
     let mentions = "";
@@ -342,13 +346,12 @@ async function buildAllTotalsUi(page) {
     lines.push(`\n**ยังไม่มีเคส (${zero.length} คน):** ${mentions.trim()}${shown < zero.length ? ` … และอีก ${zero.length - shown} คน` : ""}`);
   }
   const head =
-    `> 📋 เคสทั้งหมดในระบบ: \`${totals.cases}\` เคส (ไม่นับที่ยกเลิก)\n` +
-    `> 🚨 คดีอุ้มห่อ: \`${totals.kidnap}\` เคส · 🚫 ยกเลิก: \`${totals.cancelled}\` เคส\n` +
-    `> 👮 มีเคส \`${totals.withCases}\` คน · ยังไม่มีเคส \`${totals.noCases}\` คน`;
+    `📋 **${totals.cases}** เคส (ไม่นับที่ยกเลิก ${totals.cancelled}) · 🚨 อุ้มห่อ **${totals.kidnap}**\n` +
+    `👮 มีเคส **${totals.withCases}** คน · ยังไม่มีเคส **${totals.noCases}** คน`;
   const embed = new EmbedBuilder()
     .setColor(0x5865f2)
     .setTitle("📊 ยอดเคสทุกคน")
-    .setDescription(`${head}\n\n${lines.join("\n") || "ยังไม่มีข้อมูลเคส"}`)
+    .setDescription(`${head}\n──────────────\n${lines.join("\n\n") || "ยังไม่มีข้อมูลเคส"}`)
     .setFooter({ text: `หน้า ${page + 1}/${pages} · ยอดต่อคน = ทำเอง + ช่วยเหลือ (นับทุกเคสที่คนนั้นอยู่)` });
   const components =
     pages > 1
