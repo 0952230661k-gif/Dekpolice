@@ -262,20 +262,115 @@ async function showRanking(interaction) {
   await interaction.editReply({ embeds: [embed] });
 }
 
-async function showAllTotals(interaction) {
+/** เมนูเลือกคน (แอดมิน) สำหรับค้นเคสรายคน */
+function findPersonMenu() {
+  return new ActionRowBuilder().addComponents(
+    new UserSelectMenuBuilder().setCustomId("case_sel_find").setPlaceholder("เลือกคนที่จะดูเคส").setMinValues(1).setMaxValues(1)
+  );
+}
+
+async function showFindPerson(interaction) {
   if (!isAdmin(interaction)) {
     return interaction.reply({ embeds: [embeds.errorEmbed("ปุ่มนี้สำหรับแอดมินเท่านั้น")], flags: MessageFlags.Ephemeral });
   }
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-  const board = await caseStats.leaderboard();
-  const lines = board.map(
-    (r) => `<@${r.id}> — สัปดาห์ \`${r.weekTotal}\` · เดือน \`${r.monthTotal}\` · รวม \`${r.total}\``
-  );
-  let text = lines.join("\n") || "ยังไม่มีข้อมูลเคส";
-  if (text.length > 3900) text = text.slice(0, 3900).replace(/\n[^\n]*$/, "") + "\n…";
-  await interaction.editReply({
-    embeds: [new EmbedBuilder().setColor(0x5865f2).setTitle("📊 ยอดเคสทุกคน").setDescription(text).setFooter({ text: `ทั้งหมด ${board.length} คน` })],
+  return interaction.reply({
+    content: "🔍 **ค้นยอดเคสรายคน** — เลือกคนที่ต้องการดู",
+    components: [findPersonMenu()],
+    flags: MessageFlags.Ephemeral,
   });
+}
+
+/** เลือกคนแล้ว → แสดงยอดเคสของคนนั้น (เมนูยังอยู่ ให้เลือกคนถัดไปต่อได้เลย) */
+async function showPersonDetail(interaction) {
+  if (!isAdmin(interaction)) {
+    return interaction.update({ content: "❌ เฉพาะแอดมินเท่านั้น", embeds: [], components: [] });
+  }
+  const id = interaction.values[0];
+  const d = await caseStats.personDetail(id);
+  const reg = await db.findMember(id).catch(() => null);
+  const name = reg ? `${reg.badgeNumber ? embeds.formatBadge(reg.badgeNumber) + " " : ""}${reg.gameName}` : null;
+
+  const guildId = interaction.guildId || interaction.guild?.id;
+  const lines = d.recent.map((r) => {
+    const when = time.toTz(r.createdAt).format("DD/MM HH:mm");
+    const role = r.role === "own" ? "👮 ทำเอง" : "🤝 ช่วย";
+    const type = r.caseType ? ` · 🚨 ${r.caseType}` : "";
+    const link = guildId ? ` — [ดูเคส](https://discord.com/channels/${guildId}/${r.channelId}/${r.messageId})` : "";
+    return `\`${when}\` ${role}${type}${link}`;
+  });
+
+  const embed = new EmbedBuilder()
+    .setColor(0x5865f2)
+    .setTitle(`🔍 เคสของ ${name || "สมาชิก"}`)
+    .setDescription(
+      `<@${id}>${reg ? "" : " *(ไม่อยู่ในรายชื่อสมาชิกแล้ว)*"}\n\n` +
+        `> 📋 เคสรวมทั้งหมด: **${d.total}** เคส (ทำเอง \`${d.own}\` · ช่วย \`${d.total - d.own}\`)\n` +
+        `> 🚨 คดีอุ้มห่อ: \`${d.totalKidnap}\` เคส\n` +
+        `> 🗓️ สัปดาห์นี้: \`${d.weekTotal}\` · เดือนนี้: \`${d.monthTotal}\`\n` +
+        `> 🚫 เคสที่ยกเลิก (ไม่นับ): \`${d.cancelled}\`` +
+        (lines.length ? `\n\n**เคสล่าสุด (${lines.length} จาก ${d.total})**\n${lines.join("\n")}` : "\n\n*ยังไม่มีเคส*")
+    );
+  if (embed.data.description.length > 4000) embed.setDescription(embed.data.description.slice(0, 3990) + "…");
+  return interaction.update({ content: "", embeds: [embed], components: [findPersonMenu()] });
+}
+
+const ALL_PAGE_SIZE = 15;
+
+/** หน้า "ยอดเคสทุกคน" (แอดมิน) แบ่งหน้าละ 15 คน เพื่อให้เห็นครบทุกคนโดยไม่ถูกตัดท้าย */
+async function buildAllTotalsUi(page) {
+  const { rows: allRows, totals } = await caseStats.allTotals();
+  const rows = allRows.filter((r) => r.total > 0); // แบ่งหน้าเฉพาะคนที่มีเคส
+  const zero = allRows.filter((r) => r.total === 0); // คนที่ยังไม่มีเคส รวมเป็นบรรทัดเดียวท้ายหน้าสุดท้าย
+  const pages = Math.max(1, Math.ceil(rows.length / ALL_PAGE_SIZE));
+  page = Math.min(Math.max(page, 0), pages - 1);
+  const medals = ["🥇", "🥈", "🥉"];
+  const lines = rows.slice(page * ALL_PAGE_SIZE, (page + 1) * ALL_PAGE_SIZE).map((r, i) => {
+    const n = page * ALL_PAGE_SIZE + i;
+    const rank = medals[n] || `**${n + 1}.**`;
+    const kidnap = r.totalKidnap > 0 ? ` · 🚨 ${r.totalKidnap}` : "";
+    return `${rank} <@${r.id}> — **${r.total}** เคส (ทำเอง ${r.own} · ช่วย ${r.total - r.own})${kidnap} · สัปดาห์ ${r.weekTotal} · เดือน ${r.monthTotal}`;
+  });
+  if (page === pages - 1 && zero.length > 0) {
+    let mentions = "";
+    let shown = 0;
+    for (const r of zero) {
+      const m = `<@${r.id}> `;
+      if (mentions.length + m.length > 1200) break;
+      mentions += m;
+      shown += 1;
+    }
+    lines.push(`\n**ยังไม่มีเคส (${zero.length} คน):** ${mentions.trim()}${shown < zero.length ? ` … และอีก ${zero.length - shown} คน` : ""}`);
+  }
+  const head =
+    `> 📋 เคสทั้งหมดในระบบ: \`${totals.cases}\` เคส (ไม่นับที่ยกเลิก)\n` +
+    `> 🚨 คดีอุ้มห่อ: \`${totals.kidnap}\` เคส · 🚫 ยกเลิก: \`${totals.cancelled}\` เคส\n` +
+    `> 👮 มีเคส \`${totals.withCases}\` คน · ยังไม่มีเคส \`${totals.noCases}\` คน`;
+  const embed = new EmbedBuilder()
+    .setColor(0x5865f2)
+    .setTitle("📊 ยอดเคสทุกคน")
+    .setDescription(`${head}\n\n${lines.join("\n") || "ยังไม่มีข้อมูลเคส"}`)
+    .setFooter({ text: `หน้า ${page + 1}/${pages} · ยอดต่อคน = ทำเอง + ช่วยเหลือ (นับทุกเคสที่คนนั้นอยู่)` });
+  const components =
+    pages > 1
+      ? [
+          new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId(`case_allpg:${page - 1}`).setLabel("ก่อนหน้า").setEmoji("◀️").setStyle(ButtonStyle.Secondary).setDisabled(page === 0),
+            new ButtonBuilder().setCustomId(`case_allpg:${page + 1}`).setLabel("ถัดไป").setEmoji("▶️").setStyle(ButtonStyle.Secondary).setDisabled(page >= pages - 1)
+          ),
+        ]
+      : [];
+  return { embeds: [embed], components };
+}
+
+async function showAllTotals(interaction, page = 0) {
+  if (!isAdmin(interaction)) {
+    return interaction.reply({ embeds: [embeds.errorEmbed("ปุ่มนี้สำหรับแอดมินเท่านั้น")], flags: MessageFlags.Ephemeral });
+  }
+  if (interaction.isButton() && interaction.customId.startsWith("case_allpg:")) {
+    return interaction.update(await buildAllTotalsUi(page));
+  }
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  await interaction.editReply(await buildAllTotalsUi(page));
 }
 
 const REMOVE_PAGE_SIZE = 25;
@@ -319,6 +414,8 @@ async function handleButton(interaction) {
   if (id === "case_info") return showMyInfo(interaction);
   if (id === "case_rank") return showRanking(interaction);
   if (id === "case_all") return showAllTotals(interaction);
+  if (id === "case_find") return showFindPerson(interaction);
+  if (id.startsWith("case_allpg:")) return showAllTotals(interaction, parseInt(id.split(":")[1], 10) || 0);
 
   // ปุ่มที่อยู่ในข้อความชั่วคราว (ephemeral) แนบรหัสข้อความเคสไว้ใน customId
   if (id.startsWith("case_addtext:") || id.startsWith("case_rempg:")) {
@@ -414,6 +511,7 @@ async function handleButton(interaction) {
 
 /** เมนูเลือกคนจากปุ่ม เพิ่ม/ลด ผู้ช่วยเหลือ (customId = case_sel_add:<messageId> / case_sel_remove:<messageId>) */
 async function handleSelect(interaction) {
+  if (interaction.customId === "case_sel_find") return showPersonDetail(interaction);
   const [kind, caseMessageId] = interaction.customId.split(":");
   const c = await db.getCaseByMessage(caseMessageId);
   if (!c || c.status !== "active") {

@@ -182,10 +182,15 @@ async function runDailyCut(client, cutAt) {
   console.log(`[ตัดออกเวรอัตโนมัติ] ${label} — ออกเวรให้ ${cut.length} คน`);
   if (cut.length === 0) return;
 
+  cut.sort((a, b) => new Date(a.checkIn) - new Date(b.checkIn)); // คนเข้าเวรก่อนอยู่บนสุด
   const lines = [];
   let len = 0;
   for (const c of cut) {
-    const line = `> <@${c.discordId}> — ${time.formatDurationThai(c.hours)}`;
+    // ชื่อ (แท็ก) นำหน้า ตามด้วยเวลาที่เข้าเวร (ถ้าไม่ใช่วันเดียวกับเวลาตัด ใส่ "เมื่อวาน"/วันที่กำกับ) และชั่วโมงที่ได้
+    const inAt = time.toTz(c.checkIn);
+    const dayGap = cutAt.startOf("day").diff(inAt.startOf("day"), "day");
+    const dayText = dayGap <= 0 ? "" : dayGap === 1 ? "เมื่อวาน " : `${inAt.format("DD/MM")} `;
+    const line = `> <@${c.discordId}> — เข้าเวร ${dayText}${inAt.format("HH:mm")} น. - ออกเวร ${cutAt.format("HH:mm")} น. · รวม ${time.formatDurationThai(c.hours)}`;
     if (len + line.length > 3500) {
       lines.push(`> … และอีก ${cut.length - lines.length} คน`);
       break;

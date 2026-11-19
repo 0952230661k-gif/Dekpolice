@@ -278,7 +278,7 @@ function casePanelEmbed(kind = "normal") {
           "> คนที่อยู่ วอ.12 ไม่ถูกแท็ก · อยากเพิ่มใครแท็กต่อท้ายได้\n" +
           "> เคสปกติให้ส่งที่ห้องส่งเคสอีกห้องหนึ่ง"
       )
-      .setFooter({ text: "ℹ️ ดูเวรกับเคสของตัวเอง · 🔒 ยอดเคสทุกคน เฉพาะแอดมิน · casebot v1.2" });
+      .setFooter({ text: "ℹ️ ดูเวรกับเคสของตัวเอง · 🔒 ยอดเคสทุกคน · ค้นรายคน เฉพาะแอดมิน · casebot v1.2" });
     if (/^https?:\/\//i.test(String(config.caseBannerUrl || ""))) k.setImage(config.caseBannerUrl);
     return k;
   }
@@ -293,7 +293,7 @@ function casePanelEmbed(kind = "normal") {
         "> พิมพ์ `เดิม` แทนการแท็ก = ใช้ทีมเดียวกับเคสล่าสุดที่คุณส่ง\n" +
         "> 🚨 **คดีอุ้มห่อ** ให้ส่งที่ห้องส่งเคสอุ้มห่อโดยเฉพาะ (บอทดึงคนเข้าเวรและแท็กให้เอง)"
     )
-    .setFooter({ text: "ℹ️ ดูเวรกับเคสของตัวเอง · 🔒 ยอดเคสทุกคน เฉพาะแอดมิน · casebot v1.1" });
+    .setFooter({ text: "ℹ️ ดูเวรกับเคสของตัวเอง · 🔒 ยอดเคสทุกคน · ค้นรายคน เฉพาะแอดมิน · casebot v1.1" });
   // แบนเนอร์ต้องเป็นลิงก์รูป http(s) เท่านั้น ถ้าใส่ผิด (เช่น ใส่เป็น ID ห้อง) จะข้ามไปแทนที่จะทำให้แผงพัง
   if (/^https?:\/\//i.test(String(config.caseBannerUrl || ""))) {
     embed.setImage(config.caseBannerUrl);
@@ -307,7 +307,8 @@ function casePanelRow() {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId("case_info").setLabel("ข้อมูลของฉัน").setEmoji("ℹ️").setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId("case_rank").setLabel("อันดับเคส").setEmoji("🏆").setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId("case_all").setLabel("ยอดเคสทุกคน").setEmoji("📊").setStyle(ButtonStyle.Secondary)
+    new ButtonBuilder().setCustomId("case_all").setLabel("ยอดเคสทุกคน").setEmoji("📊").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId("case_find").setLabel("ค้นรายคน").setEmoji("🔍").setStyle(ButtonStyle.Secondary)
   );
 }
 
