@@ -13,6 +13,7 @@ const applicationHandler = require("./handlers/applicationHandler");
 const caseHandler = require("./handlers/caseHandler");
 const db = require("./utils/db");
 const weeklyScheduler = require("./utils/weeklyScheduler");
+const roster = require("./utils/roster");
 
 const client = new Client({
   intents: [
@@ -41,9 +42,49 @@ function loadCommands(dir) {
 
 loadCommands(path.join(__dirname, "commands"));
 
+/**
+ * ปรับชื่อเล่นทุกคนในดิสคอร์ดให้เป็นรูปแบบใหม่ "เลข [ยศ] ชื่อ" (เช่น "[003] [รองผบ] Novem" → "3 [รองผบ] Novem")
+ * ทำครั้งเดียวต่อรูปแบบ (จำสถานะไว้ใน bot_state) ข้ามคนที่บอทเปลี่ยนชื่อให้ไม่ได้ (เจ้าของเซิร์ฟเวอร์/ยศสูงกว่าบอท)
+ */
+const NICK_STYLE_KEY = "nickname_style";
+const NICK_STYLE_VERSION = "plain-number-v1";
+async function syncAllNicknamesOnce(client) {
+  db.takeMigratedBadgeIds(); // เคลียร์คิวเดิม (การซิงก์ครั้งนี้ครอบคลุมทุกคนอยู่แล้ว)
+  if ((await db.getState(NICK_STYLE_KEY)) === NICK_STYLE_VERSION) return;
+  const members = await db.getAllMembers();
+  let ok = 0;
+  let same = 0;
+  const failed = [];
+  for (const m of members) {
+    const nick = embeds.memberNickname({ badgeNumber: m.badgeNumber, position: m.position, gameName: m.gameName }).slice(0, 32);
+    let found = false;
+    for (const guild of client.guilds.cache.values()) {
+      const gm = await guild.members.fetch(m.discordId).catch(() => null);
+      if (!gm) continue;
+      found = true;
+      if (gm.nickname === nick) {
+        same += 1;
+        continue;
+      }
+      try {
+        await gm.setNickname(nick);
+        ok += 1;
+      } catch (err) {
+        failed.push(`${m.gameName} (${err.message})`);
+      }
+    }
+    if (!found) failed.push(`${m.gameName} (ไม่ได้อยู่ในเซิร์ฟเวอร์)`);
+  }
+  await db.setState(NICK_STYLE_KEY, NICK_STYLE_VERSION);
+  console.log(`[ชื่อเล่น] ปรับเป็นรูปแบบเลขล้วน สำเร็จ ${ok} คน · ตรงอยู่แล้ว ${same} คน · ไม่สำเร็จ ${failed.length} คน`);
+  if (failed.length > 0) console.warn(`[ชื่อเล่น] ต้องเปลี่ยนเอง: ${failed.join(", ")}`);
+  await roster.refreshRoster(client).catch(() => {});
+}
+
 client.once("ready", async () => {
   console.log(`บอทออนไลน์แล้วในชื่อ ${client.user.tag}`);
   console.log(`โหลดคำสั่งทั้งหมด ${client.commands.size} คำสั่ง`);
+  await syncAllNicknamesOnce(client); // ปรับชื่อเล่นทุกคนเป็นรูปแบบ "เลข [ยศ] ชื่อ" ครั้งเดียว
   await panel.refreshPanel(client); // ซิงก์แผงเข้าเวรที่ปักไว้ให้ตรงกับสถานะล่าสุดหลังบอทรีสตาร์ท
   await applicationPanel.refreshApplicationPanel(client); // ซิงก์แผงสมัครที่ปักไว้ให้ตรงกับ config ล่าสุด
   // ตัดรอบเวรอัตโนมัติ: 23:59 น. วันอาทิตย์ ปิดเวรที่ค้าง + สรุปลงห้องสัปดาห์ / 00:00 น. วันจันทร์ เปิดเวรต่อให้
@@ -282,4 +323,22 @@ function pingSelf() {
 setInterval(pingSelf, SELF_PING_INTERVAL_MS);
 // ==================================================================
 
-client.login(process.env.DISCORD_TOKEN);
+// ===== ล็อกอินเข้า Discord พร้อมบอกสาเหตุให้ชัดเมื่อเข้าไม่ได้ (ดูได้ในหน้า Logs ของ Render) =====
+process.on("unhandledRejection", (err) => console.error("[unhandledRejection]", err));
+client.on("error", (err) => console.error("[Discord error]", err));
+client.on("shardError", (err) => console.error("[Discord shardError]", err));
+client.on("shardDisconnect", (ev, id) => console.warn(`[Discord] shard ${id} หลุดการเชื่อมต่อ (code ${ev?.code})`));
+
+const rawToken = process.env.DISCORD_TOKEN;
+if (!rawToken || !rawToken.trim()) {
+  console.error("❌ ไม่พบ DISCORD_TOKEN ใน Environment ของ Render — ใส่ค่าโทเค็นของบอทที่ Environment แล้ว Save/Restart");
+} else {
+  // กันพลาดตอนก๊อปมาวาง: ช่องว่าง/ขึ้นบรรทัดใหม่/เครื่องหมายคำพูดครอบ/คำว่า DISCORD_TOKEN= ติดมาด้วย
+  const token = rawToken.trim().replace(/^DISCORD_TOKEN=/, "").replace(/^["']|["']$/g, "");
+  console.log(`[Discord] กำลังล็อกอิน... (โทเค็นยาว ${token.length} ตัวอักษร)`);
+  client.login(token).catch((err) => {
+    console.error("❌ ล็อกอิน Discord ไม่สำเร็จ:", err.code || "", err.message);
+    if (/token/i.test(err.message)) console.error("→ โทเค็นไม่ถูกต้อง/ถูกรีเซ็ตไปแล้ว: ไปที่ Developer Portal > Bot > Reset Token แล้วใส่ค่าใหม่ใน Render (DISCORD_TOKEN)");
+    if (/intent/i.test(err.message)) console.error("→ ต้องเปิด Server Members Intent และ Message Content Intent ที่ Developer Portal > Bot > Privileged Gateway Intents");
+  });
+}

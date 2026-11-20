@@ -156,6 +156,7 @@ const ready = (async () => {
       }
     }
   }
+  await normalizeExistingBadges();
   await backfillBadgeNumbers();
   console.log(
     TURSO_URL
@@ -168,8 +169,42 @@ const ready = (async () => {
 
 // ---------- เลขประจำตัว (badge number) ----------
 // ออกอัตโนมัติตอนสมัคร โดยให้ "เลขน้อยที่สุดที่ว่าง" ก่อนเสมอ ไม่ซ้ำกัน
-// เช่น มี 001, 003 (002 ลาออกไปแล้ว) → คนใหม่ได้ 002, คนถัดไปได้ 004
+// เช่น มี 1, 3 (2 ลาออกไปแล้ว) → คนใหม่ได้ 2, คนถัดไปได้ 4 (รหัสตัวเดียว เริ่มที่ 1)
 // สมาชิกเดิมที่ยังไม่มีเลขจะได้รับเลขตามลำดับวันที่สมัคร (เติมช่องว่างจากน้อยไปมากเช่นกัน)
+// รหัสเป็นตัวเลขล้วน → ตัดศูนย์นำหน้า ("001" → "1") ถ้าไม่ใช่ตัวเลขล้วนคงเดิม
+function normalizeBadge(v) {
+  const str = String(v ?? "").trim();
+  return /^\d+$/.test(str) ? String(parseInt(str, 10)) : str;
+}
+
+let migratedBadgeIds = [];
+/** รายชื่อ discordId ที่ถูกแปลงรหัสจาก 001 → 1 ตอนบอทเริ่ม (ให้ index.js ไปอัปเดตชื่อเล่นในดิสคอร์ด) — อ่านแล้วเคลียร์ */
+function takeMigratedBadgeIds() {
+  const ids = migratedBadgeIds;
+  migratedBadgeIds = [];
+  return ids;
+}
+
+/** แปลงรหัสเดิมที่มีศูนย์นำหน้า (001, 003) เป็นรหัสตัวเดียว (1, 3) — ข้ามถ้าชนกับรหัสของคนอื่น */
+async function normalizeExistingBadges() {
+  const { rows } = await client.execute("SELECT discord_id, badge_number FROM members WHERE badge_number IS NOT NULL AND badge_number != ''");
+  const taken = new Set(rows.map((r) => String(r.badge_number)));
+  for (const r of rows) {
+    const old = String(r.badge_number);
+    const fixed = normalizeBadge(old);
+    if (fixed === old) continue;
+    if (taken.has(fixed)) {
+      console.warn(`[db] รหัส ${old} แปลงเป็น ${fixed} ไม่ได้ เพราะมีคนใช้ ${fixed} อยู่แล้ว — ให้แอดมินแก้ด้วย /เปลี่ยนเลขนำหน้า`);
+      continue;
+    }
+    await client.execute({ sql: "UPDATE members SET badge_number = ? WHERE discord_id = ?", args: [fixed, r.discord_id] });
+    taken.delete(old);
+    taken.add(fixed);
+    migratedBadgeIds.push(r.discord_id);
+  }
+  if (migratedBadgeIds.length > 0) console.log(`[db] แปลงรหัสประจำตัวเป็นรหัสตัวเดียว ${migratedBadgeIds.length} คน`);
+}
+
 function smallestFreeNumber(usedValues) {
   const used = new Set();
   for (const v of usedValues) {
@@ -238,7 +273,7 @@ async function findMember(discordId) {
 
 async function addMember(data) {
   await ready;
-  const badgeNumber = data.badgeNumber ? String(data.badgeNumber) : await nextBadgeNumber();
+  const badgeNumber = data.badgeNumber ? normalizeBadge(data.badgeNumber) : await nextBadgeNumber();
   await client.execute({
     sql: `INSERT INTO members (discord_id, discord_name, game_name, department, position, registered_at, badge_number)
           VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -259,7 +294,7 @@ async function findMemberByBadgeNumber(badgeNumber) {
   await ready;
   const { rows } = await client.execute({
     sql: "SELECT * FROM members WHERE badge_number = ?",
-    args: [String(badgeNumber)],
+    args: [normalizeBadge(badgeNumber)],
   });
   return rowToMember(rows[0]);
 }
@@ -268,7 +303,7 @@ async function updateMemberBadgeNumber(discordId, badgeNumber) {
   await ready;
   const result = await client.execute({
     sql: "UPDATE members SET badge_number = ? WHERE discord_id = ?",
-    args: [String(badgeNumber), discordId],
+    args: [normalizeBadge(badgeNumber), discordId],
   });
   return Number(result.rowsAffected) > 0;
 }
@@ -822,6 +857,8 @@ async function getPausedMs(discordId) {
 }
 
 module.exports = {
+  normalizeBadge,
+  takeMigratedBadgeIds,
   smallestFreeNumber,
   findMemberByBadgeNumber,
   updateMemberBadgeNumber,

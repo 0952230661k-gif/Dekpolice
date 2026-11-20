@@ -8,11 +8,12 @@ function formatSteamHex(steamHex) {
 }
 
 // ---------- Helper: ชื่อแสดงผลของสมาชิก ----------
-// เลขประจำตัวแสดงเป็น [002] (เติม 0 ให้ครบ 3 หลักเฉพาะเลขล้วน ค่าที่เก็บในฐานข้อมูลยังเป็น 2)
+// เลขประจำตัวแสดงเป็นเลขล้วน ไม่มีวงเล็บ เช่น 2 (ชื่อเล่น: "2 [ยศ] ชื่อ")
 function formatBadge(badgeNumber) {
   if (!badgeNumber) return "";
   const n = String(badgeNumber);
-  return `[${/^\d+$/.test(n) ? n.padStart(3, "0") : n}]`;
+  // รหัสตัวเลขล้วน ไม่มีวงเล็บและไม่เติมศูนย์นำหน้า: 1, 2, 3 … (ข้อมูลเก่าที่เก็บเป็น 001 ก็แสดงเป็น 1)
+  return /^\d+$/.test(n) ? String(parseInt(n, 10)) : n; // ตัวเลขล้วน ไม่มีวงเล็บ: 3 [รองผบ] ชื่อ
 }
 
 function memberDisplayName({ gameName, badgeNumber }) {

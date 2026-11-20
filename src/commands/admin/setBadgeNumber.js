@@ -31,7 +31,7 @@ module.exports = {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     const discordId = interaction.options.getString("ไอดีดิสคอร์ด").trim();
-    const badgeNumber = interaction.options.getString("เลขนำหน้า").trim();
+    const badgeNumber = db.normalizeBadge(interaction.options.getString("เลขนำหน้า")); // 001 → 1
 
     if (!/^\d{17,20}$/.test(discordId)) {
       return interaction.editReply({
