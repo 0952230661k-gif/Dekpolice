@@ -7,6 +7,7 @@ const roster = require("../utils/roster");
 const panel = require("../utils/panel");
 const weeklyReset = require("../utils/weeklyReset");
 const weeklySummary = require("../utils/weeklySummary");
+const storyHandler = require("./storyHandler");
 const config = require("../../config.json");
 const { sendLog, isAdmin } = require("../utils/permissions");
 const { swapPositionRole, setNickname, assignRoles, rolesForNewMember } = require("../utils/discordSync");
@@ -365,6 +366,7 @@ async function handleButton(interaction) {
 
   const id = interaction.customId;
 
+  if (id.startsWith("ap_story_")) return storyHandler.handleAdminButton(interaction);
   if (id === "ap_onduty") return handleOnDuty(interaction);
   if (id === "ap_summary") return handleSummary(interaction);
   if (id === "ap_cutduty") return handleCutDuty(interaction);
@@ -731,6 +733,7 @@ async function handleStringSelect(interaction) {
   if (await blockIfNotAdmin(interaction)) return;
 
   const id = interaction.customId;
+  if (id === "ap_select_storyweek") return storyHandler.handleAdminStringSelect(interaction);
   if (id === "ap_select_cutduty") return handleSelectCutDuty(interaction);
   if (id === "ap_select_regposition") return handleSelectRegPosition(interaction);
   if (id === "ap_select_setposition") return handleSelectSetPosition(interaction);
@@ -994,6 +997,7 @@ async function handleModalSubmit(interaction) {
 
   const [action, targetId] = interaction.customId.split(":");
 
+  if (action === "ap_modal_story_otp") return storyHandler.handleAdminModalSubmit(interaction);
   if (action === "ap_modal_cutduty") return handleModalCutDuty(interaction);
   if (action === "ap_modal_addhours") return handleModalAddHours(interaction, targetId);
   if (action === "ap_modal_subhours") return handleModalSubHours(interaction, targetId);

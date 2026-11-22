@@ -28,7 +28,7 @@ const MENTION_RE = /<@!?(\d{15,25})>/g;
  */
 const KIDNAP_TYPE = "อุ้มห่อ";
 
-async function parseCaseText(text, ownerId, { kidnap: isKidnapRoom = false } = {}) {
+async function parseCaseText(text, ownerId, { kidnap: isKidnapRoom = false, story: storyMode = false } = {}) {
   const lines = String(text || "").split("\n").map((l) => l.trim());
   const rest = lines;
 
@@ -44,9 +44,13 @@ async function parseCaseText(text, ownerId, { kidnap: isKidnapRoom = false } = {
     for (const m of line.matchAll(MENTION_RE)) ids.add(m[1]);
   }
 
-  // ห้องส่งเคสอุ้มห่อ: ดึงทุกคนที่เข้าเวรเข้าเคสเสมอ (เหมือน all) ไม่ต้องพิมพ์อะไรเพิ่ม
-  if (isKidnapRoom) wantAll = true;
-  if (wantAll) {
+  // เคสอุ้มห่อใช้ "เวลาสตอรี่" แทนเวรปกติทั้งหมด: ห้องเคสอุ้มห่อดึงทุกคนที่อยู่ในสตอรี่เข้าเคสเสมอ, all = ทุกคนในสตอรี่,
+  // และแท็กได้เฉพาะคนที่อยู่ในสตอรี่เท่านั้น (คนอื่นไปอยู่ใน notInStory)
+  let storyIds = null;
+  if (storyMode) {
+    storyIds = new Set((await db.getAllOpenStory()).map((r) => r.discordId));
+    if (wantAll || isKidnapRoom) for (const id of storyIds) ids.add(id);
+  } else if (isKidnapRoom || wantAll) {
     // all = ทุกคนที่เข้าเวรอยู่ (ไม่รวมคนที่อยู่ วอ.12) ยกเว้นคนที่ตั้งสถานะ วอ.12 (ไม่อยู่หน้าจอ)
     const afk = new Set(await db.getAfkIds());
     for (const d of await db.getAllOpenDuty()) if (!afk.has(d.discordId)) ids.add(d.discordId);
@@ -60,11 +64,16 @@ async function parseCaseText(text, ownerId, { kidnap: isKidnapRoom = false } = {
   // ต้องมีชื่อในรายชื่อ (ตาราง members) เท่านั้น — คนที่ไม่อยู่ในรายชื่อจะถูกแยกไว้ใน unregistered
   const participants = [];
   const unregistered = [];
+  const notInStory = [];
   for (const id of ids) {
+    if (storyIds && !storyIds.has(id)) {
+      notInStory.push(id);
+      continue;
+    }
     if (await db.findMember(id)) participants.push(id);
     else unregistered.push(id);
   }
-  return { participants, unregistered, caseType: isKidnapRoom ? KIDNAP_TYPE : null };
+  return { participants, unregistered, notInStory, caseType: isKidnapRoom ? KIDNAP_TYPE : null };
 }
 
 async function ownerInfo(guild, c) {
@@ -129,7 +138,16 @@ async function handleMessage(message) {
     return reject("❌ คุณยังไม่มีชื่อในรายชื่อ จึงส่งเคสไม่ได้ กรุณาติดต่อแอดมินเพื่อเพิ่มชื่อก่อน");
   }
 
-  const parsed = await parseCaseText(message.content, message.author.id, { kidnap: isKidnapRoom });
+  // ห้องเคสอุ้มห่อ: คนส่งต้องอยู่ใน "เวลาสตอรี่" (เข้าด้วย OTP ที่แอดมินเปิด)
+  if (isKidnapRoom && !(await db.findOpenStory(message.author.id))) {
+    return reject("❌ ต้องเข้า **เวลาสตอรี่อุ้ม** ก่อน (กดปุ่มเข้าสตอรี่ + ใส่ OTP จากแอดมิน) ถึงจะส่งเคสอุ้มห่อได้");
+  }
+  const parsed = await parseCaseText(message.content, message.author.id, { kidnap: isKidnapRoom, story: isKidnapRoom });
+  if (parsed.notInStory?.length > 0) {
+    return reject(
+      `❌ เคสอุ้มห่อแท็กได้เฉพาะคนที่อยู่ใน **เวลาสตอรี่** — คนเหล่านี้ไม่ได้อยู่ในสตอรี่: ${parsed.notInStory.map((id) => `<@${id}>`).join(" ")}\nให้เขาเข้าสตอรี่ด้วย OTP ก่อน หรือเอาออกจากข้อความ`
+    );
+  }
   if (parsed.unregistered.length > 0) {
     return reject(
       `❌ ส่งเคสไม่ได้ มีคนที่ไม่อยู่ในรายชื่อ: ${parsed.unregistered.map((id) => `<@${id}>`).join(" ")}\nแท็กเฉพาะคนที่มีชื่อในรายชื่อเท่านั้น หรือให้แอดมินเพิ่มชื่อก่อน`
@@ -139,7 +157,7 @@ async function handleMessage(message) {
   if (parsed.participants.length === 0 && message.attachments.size === 0) {
     return reject(
       isKidnapRoom
-        ? "⚠️ ตอนนี้ไม่มีใครเข้าเวรให้ดึงเข้าเคส — ต้องแนบรูป และ/หรือแท็กคนช่วยเหลือ"
+        ? "⚠️ ตอนนี้ไม่มีใครอยู่ในสตอรี่ให้ดึงเข้าเคส — ต้องแนบรูป และ/หรือแท็กคนช่วยเหลือ"
         : "⚠️ ต้องแนบรูป และ/หรือแท็กคนช่วยเหลือ\n```\n@คนที่มาช่วย  หรือพิมพ์ all / เดิม\n```"
     );
   }
@@ -176,7 +194,7 @@ async function handleMessage(message) {
   // คดีอุ้มห่อ: แท็กเรียกทุกคนที่เข้าเวรตอนนั้นจริง (ปกติเคสไม่แจ้งเตือนใคร) — แบ่งข้อความตามลิมิต 2000 ตัวอักษรของ Discord
   const pingChunks = caseData.caseType ? chunkMentions(caseData.participants, 1700) : [];
   const header = caseData.caseType
-    ? `🚨 **คดี${caseData.caseType}** — เรียกทุกคนที่เข้าเวร (${caseData.participants.length} คน)${pingChunks[0] ? `\n${pingChunks[0].text}` : ""}`
+    ? `🚨 **คดี${caseData.caseType}** — เรียกทุกคนที่อยู่ในสตอรี่ (${caseData.participants.length} คน)${pingChunks[0] ? `\n${pingChunks[0].text}` : ""}`
     : undefined;
   const sent = await message.channel.send({
     content: header,
@@ -472,7 +490,7 @@ async function handleButton(interaction) {
       content:
         `➕ **เพิ่มผู้ช่วยเหลือ** ในเคส ${caseLabel(c)} — ไม่จำกัดจำนวน (ปัจจุบัน ${c.participants.length} คน)\n` +
         `เลือกจากเมนู (เพิ่มกี่รอบก็ได้) หรือกดปุ่มด้านล่างเพื่อพิมพ์แท็กได้ครั้งละมากๆ / พิมพ์ \`all\` เพื่อเพิ่มทุกคนที่เข้าเวร\n` +
-        `เพิ่มได้เฉพาะคนที่มีชื่อในรายชื่อ`,
+        c.caseType === KIDNAP_TYPE ? `คดีอุ้มห่อ: เพิ่มได้เฉพาะคนที่อยู่ใน **เวลาสตอรี่** (พิมพ์ \`all\` = ทุกคนที่อยู่ในสตอรี่)` : `เพิ่มได้เฉพาะคนที่มีชื่อในรายชื่อ`,
       components: [new ActionRowBuilder().addComponents(menu), new ActionRowBuilder().addComponents(textBtn)],
       flags: MessageFlags.Ephemeral,
     });
@@ -528,9 +546,11 @@ async function handleSelect(interaction) {
   if (kind === "case_sel_add") {
     const added = [];
     const skippedUnregistered = [];
+    const notInStory = [];
     const already = [];
     for (const pid of interaction.values) {
       if (pid === c.ownerId || c.participants.includes(pid)) { already.push(pid); continue; }
+      if (c.caseType === KIDNAP_TYPE && !(await db.findOpenStory(pid))) { notInStory.push(pid); continue; }
       if (!(await db.findMember(pid))) { skippedUnregistered.push(pid); continue; }
       c.participants.push(pid);
       added.push(pid);
@@ -538,6 +558,7 @@ async function handleSelect(interaction) {
     const lines = [];
     if (added.length) lines.push(`✅ เพิ่มแล้ว ${added.length} คน: ${added.map((x) => `<@${x}>`).join(" ")}`);
     if (already.length) lines.push(`ℹ️ อยู่ในเคสอยู่แล้ว/เป็นเจ้าของเคส: ${already.map((x) => `<@${x}>`).join(" ")}`);
+    if (notInStory.length) lines.push(`❌ ไม่ได้อยู่ในเวลาสตอรี่ เพิ่มเข้าเคสอุ้มห่อไม่ได้: ${notInStory.map((x) => `<@${x}>`).join(" ")}`);
     if (skippedUnregistered.length) lines.push(`❌ ไม่อยู่ในรายชื่อ เพิ่มไม่ได้: ${skippedUnregistered.map((x) => `<@${x}>`).join(" ")}`);
     summary = lines.join("\n");
   } else {
@@ -570,7 +591,7 @@ async function handleAddText(interaction) {
   }
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-  const parsed = await parseCaseText(interaction.fields.getTextInputValue("people"), c.ownerId);
+  const parsed = await parseCaseText(interaction.fields.getTextInputValue("people"), c.ownerId, { story: c.caseType === KIDNAP_TYPE });
   const added = parsed.participants.filter((p) => !c.participants.includes(p));
   c.participants.push(...added);
   await db.updateCase(c.id, c);
@@ -588,6 +609,9 @@ async function handleAddText(interaction) {
   const lines = [`✅ เพิ่มแล้ว ${added.length} คน (ผู้ช่วยทั้งหมด ${c.participants.length} คน)`];
   const dup = parsed.participants.length - added.length;
   if (dup > 0) lines.push(`ℹ️ ข้าม ${dup} คนที่อยู่ในเคสอยู่แล้ว`);
+  if (parsed.notInStory?.length > 0) {
+    lines.push(`❌ ไม่ได้อยู่ในเวลาสตอรี่ เพิ่มเข้าเคสอุ้มห่อไม่ได้ ${parsed.notInStory.length} คน: ${parsed.notInStory.slice(0, 20).map((x) => `<@${x}>`).join(" ")}`);
+  }
   if (parsed.unregistered.length > 0) {
     lines.push(`❌ ไม่อยู่ในรายชื่อ เพิ่มไม่ได้ ${parsed.unregistered.length} คน: ${parsed.unregistered.slice(0, 20).map((x) => `<@${x}>`).join(" ")}`);
   }
@@ -617,7 +641,19 @@ async function handleModalSubmit(interaction) {
   }
 
   const text = interaction.fields.getTextInputValue("partners");
-  const parsed = await parseCaseText(text, c.ownerId);
+  const parsed = await parseCaseText(text, c.ownerId, { story: c.caseType === KIDNAP_TYPE });
+  if (parsed.notInStory?.length > 0) {
+    // คนที่อยู่ในเคสเดิมอยู่แล้ว (แต่ออกจากสตอรี่ไปแล้ว) คงไว้ได้ ไม่ต้องเข้าสตอรี่ซ้ำ
+    const keep = parsed.notInStory.filter((id) => c.participants.includes(id));
+    parsed.participants.push(...keep);
+    parsed.notInStory = parsed.notInStory.filter((id) => !c.participants.includes(id));
+  }
+  if (parsed.notInStory?.length > 0) {
+    return interaction.reply({
+      embeds: [embeds.errorEmbed(`เคสอุ้มห่อแท็กได้เฉพาะคนที่อยู่ในเวลาสตอรี่ — ไม่ได้อยู่ในสตอรี่: ${parsed.notInStory.map((id) => `<@${id}>`).join(" ")}`)],
+      flags: MessageFlags.Ephemeral,
+    });
+  }
   if (parsed.unregistered.length > 0) {
     return interaction.reply({
       embeds: [embeds.errorEmbed(`มีคนที่ไม่อยู่ในรายชื่อ: ${parsed.unregistered.map((id) => `<@${id}>`).join(" ")}\nแท็กเฉพาะคนที่มีชื่อในรายชื่อเท่านั้น`)],

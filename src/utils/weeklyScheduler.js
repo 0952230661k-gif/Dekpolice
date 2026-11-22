@@ -6,6 +6,7 @@ const panel = require("./panel");
 const weeklyReset = require("./weeklyReset");
 const { sendLog } = require("./permissions");
 const caseStats = require("./caseStats");
+const story = require("./story");
 const { EmbedBuilder } = require("discord.js");
 
 /**
@@ -100,6 +101,13 @@ async function runWeeklyCut(client, cutAt) {
     for (const embed of pages) await sendLog(client, "สรุปเคส", embed);
   } catch (err) {
     console.error("[ตัดรอบอัตโนมัติ] ส่งสรุปเคสรายสัปดาห์ไม่สำเร็จ:", err);
+  }
+
+  // เวลาสตอรี่อุ้ม: ปิด OTP + ออกให้ทุกคน + ส่งสรุปสัปดาห์ (แยกจากเวร ไม่เปิดต่อข้ามสัปดาห์)
+  try {
+    await story.weeklyCut(client, cutAt);
+  } catch (err) {
+    console.error("[ตัดรอบอัตโนมัติ] ตัดเวลาสตอรี่อุ้มไม่สำเร็จ:", err);
   }
 
   await panel.refreshPanel(client).catch(() => {});
@@ -245,6 +253,7 @@ async function tick(client) {
 
     await resumeIfDue(client);
     await dailyCutIfDue(client);
+    await story.autoCutOverdue(client); // กันลืมออกจากเวลาสตอรี่ (ค้างเกิน config.storyMaxHours)
   } catch (err) {
     console.error("[ตัดรอบอัตโนมัติ] เกิดข้อผิดพลาด:", err);
   } finally {

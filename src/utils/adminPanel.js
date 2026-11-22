@@ -14,6 +14,7 @@ function adminPanelEmbed() {
         "**ข้อมูล:** 📋 คนเข้าเวรตอนนี้ / 📊 สรุปสัปดาห์นี้\n" +
         "**จัดการชั่วโมง/เวลา:** ➕ เพิ่ม / ➖ ลด / ✏️ แก้เวลา / 🧹 ล้างสถานะเวร\n" +
         "**จัดการสมาชิก:** 🆕 เพิ่มสมาชิก / 🎖️ แก้ไขตำแหน่ง / ✏️ แก้ไขชื่อ / 🗑️ ลบสมาชิก\n" +
+        "**สตอรี่อุ้ม (เวลาแยก ใช้กับเคสอุ้มห่อเท่านั้น):** 🔑 เปิด OTP (สุ่ม/ตั้งเอง) / 🔒 ปิด OTP / 🎬 จบสตอรี่ (ออกทุกคน) / 🎭 คนในสตอรี่ / 📈 สรุปเวลาสตอรี่\n" +
         "**ระบบรายสัปดาห์:** 🧹 เคลียร์ฐานข้อมูลรายสัปดาห์ (บอทตัดรอบเองทุก 23:59 น. วันอาทิตย์ / สั่งเองเพิ่มได้) / 📜 ประวัติสัปดาห์ก่อนหน้า"
     )
     .setFooter({ text: "POLICE DUTY SYSTEM • Admin Panel" })
@@ -45,7 +46,15 @@ function adminPanelRows() {
     new ButtonBuilder().setCustomId("ap_weeklyhistory").setLabel("ประวัติสัปดาห์ก่อนหน้า").setEmoji("📜").setStyle(ButtonStyle.Secondary)
   );
 
-  return [rowInfo, rowHours, rowMembers, rowWeekly];
+  const rowStory = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId("ap_story_open").setLabel("เปิด OTP สตอรี่อุ้ม").setEmoji("🔑").setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId("ap_story_close").setLabel("ปิด OTP").setEmoji("🔒").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId("ap_story_end").setLabel("จบสตอรี่").setEmoji("🎬").setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId("ap_story_list").setLabel("คนในสตอรี่").setEmoji("🎭").setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId("ap_story_summary").setLabel("สรุปเวลาสตอรี่").setEmoji("📈").setStyle(ButtonStyle.Primary)
+  );
+
+  return [rowInfo, rowHours, rowMembers, rowWeekly, rowStory];
 }
 
 module.exports = { adminPanelEmbed, adminPanelRows };

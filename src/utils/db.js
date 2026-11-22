@@ -115,6 +115,32 @@ const SCHEMA_STATEMENTS = [
   `CREATE TABLE IF NOT EXISTS afk_status (
     discord_id TEXT PRIMARY KEY,
     since TEXT
+  )`,  // ---------- ระบบเวลาสตอรี่อุ้ม (แยกจากเวรปกติทั้งหมด) ----------
+  `CREATE TABLE IF NOT EXISTS story_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    discord_id TEXT,
+    name TEXT,
+    date TEXT,
+    check_in TEXT,
+    check_out TEXT,
+    hours REAL,
+    status TEXT,
+    note TEXT,
+    otp_id INTEGER
+  )`,
+  `CREATE TABLE IF NOT EXISTS story_otp (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    code TEXT,
+    created_by TEXT,
+    created_at TEXT,
+    expires_at TEXT,
+    status TEXT DEFAULT 'open',
+    closed_at TEXT
+  )`,
+  `CREATE TABLE IF NOT EXISTS story_panel (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    channel_id TEXT,
+    message_id TEXT
   )`,
 ];
 
@@ -856,7 +882,138 @@ async function getPausedMs(discordId) {
   return total;
 }
 
+// ---------- ระบบเวลาสตอรี่อุ้ม (แยกจาก duty_log) ----------
+
+function rowToStory(row) {
+  if (!row) return null;
+  return {
+    id: Number(row.id),
+    discordId: row.discord_id,
+    name: row.name,
+    date: row.date,
+    checkIn: row.check_in,
+    checkOut: row.check_out ?? "-",
+    hours: row.hours ?? 0,
+    status: row.status,
+    note: row.note || null,
+    otpId: row.otp_id == null ? null : Number(row.otp_id),
+  };
+}
+
+function rowToOtp(row) {
+  if (!row) return null;
+  return {
+    id: Number(row.id),
+    code: row.code,
+    createdBy: row.created_by,
+    createdAt: row.created_at,
+    expiresAt: row.expires_at,
+    status: row.status,
+    closedAt: row.closed_at || null,
+  };
+}
+
+/** เปิด OTP ใหม่ (ปิดอันเก่าที่ยังเปิดอยู่ให้ก่อน — มี OTP เปิดได้ทีละอันเท่านั้น) คืนค่า id ของ OTP ใหม่ */
+async function createStoryOtp({ code, createdBy, createdAt, expiresAt }) {
+  await ready;
+  await client.execute({
+    sql: "UPDATE story_otp SET status = 'closed', closed_at = ? WHERE status = 'open'",
+    args: [createdAt],
+  });
+  const res = await client.execute({
+    sql: "INSERT INTO story_otp (code, created_by, created_at, expires_at, status) VALUES (?, ?, ?, ?, 'open')",
+    args: [code, createdBy, createdAt, expiresAt],
+  });
+  return Number(res.lastInsertRowid);
+}
+
+/** OTP ล่าสุดที่สถานะ open (ยังไม่เช็คหมดเวลา — ให้ชั้นบนเช็ค expiresAt เอง) */
+async function getOpenStoryOtp() {
+  await ready;
+  const { rows } = await client.execute("SELECT * FROM story_otp WHERE status = 'open' ORDER BY id DESC LIMIT 1");
+  return rowToOtp(rows[0]);
+}
+
+/** ปิด OTP ที่เปิดอยู่ทั้งหมด (ไม่รับคนเข้าเพิ่ม) คืนค่าจำนวนที่ถูกปิด */
+async function closeStoryOtp(closedAt) {
+  await ready;
+  const res = await client.execute({
+    sql: "UPDATE story_otp SET status = 'closed', closed_at = ? WHERE status = 'open'",
+    args: [closedAt],
+  });
+  return Number(res.rowsAffected) || 0;
+}
+
+async function findOpenStory(discordId) {
+  await ready;
+  const { rows } = await client.execute({
+    sql: "SELECT * FROM story_log WHERE discord_id = ? AND status = 'เข้าสตอรี่' ORDER BY id DESC LIMIT 1",
+    args: [discordId],
+  });
+  return rowToStory(rows[0]);
+}
+
+async function getAllOpenStory() {
+  await ready;
+  const { rows } = await client.execute("SELECT * FROM story_log WHERE status = 'เข้าสตอรี่' ORDER BY id");
+  return rows.map(rowToStory);
+}
+
+async function addStoryCheckIn({ discordId, name, date, checkIn, otpId }) {
+  await ready;
+  await client.execute({
+    sql: `INSERT INTO story_log (discord_id, name, date, check_in, check_out, hours, status, otp_id)
+          VALUES (?, ?, ?, ?, NULL, NULL, 'เข้าสตอรี่', ?)`,
+    args: [discordId, name, date, checkIn, otpId ?? null],
+  });
+}
+
+/** ปิดกะสตอรี่ — คืนค่า false ถ้ากะนี้ถูกปิดไปก่อนแล้ว (กันกดซ้ำ/ตัดซ้อน) */
+async function setStoryCheckOut(id, checkOutIso, hours, note = null) {
+  await ready;
+  const res = await client.execute({
+    sql: "UPDATE story_log SET check_out = ?, hours = ?, status = 'ออกสตอรี่', note = COALESCE(?, note) WHERE id = ? AND status = 'เข้าสตอรี่'",
+    args: [checkOutIso, hours, note, id],
+  });
+  return Number(res.rowsAffected) > 0;
+}
+
+/** ประวัติกะสตอรี่ที่ปิดแล้ว (ออกสตอรี่) ของทุกคน หรือคนเดียว */
+async function getClosedStoryLogs(discordId = null) {
+  await ready;
+  const { rows } = discordId
+    ? await client.execute({ sql: "SELECT * FROM story_log WHERE status = 'ออกสตอรี่' AND discord_id = ? ORDER BY id", args: [discordId] })
+    : await client.execute("SELECT * FROM story_log WHERE status = 'ออกสตอรี่' ORDER BY id");
+  return rows.map(rowToStory);
+}
+
+async function getStoryPanel() {
+  await ready;
+  const { rows } = await client.execute("SELECT channel_id, message_id FROM story_panel WHERE id = 1");
+  if (!rows[0]) return null;
+  return { channelId: rows[0].channel_id, messageId: rows[0].message_id };
+}
+
+async function setStoryPanel(channelId, messageId) {
+  await ready;
+  await client.execute({
+    sql: `INSERT INTO story_panel (id, channel_id, message_id) VALUES (1, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET channel_id = excluded.channel_id, message_id = excluded.message_id`,
+    args: [channelId, messageId],
+  });
+}
+
 module.exports = {
+  createStoryOtp,
+  getOpenStoryOtp,
+  closeStoryOtp,
+  findOpenStory,
+  getAllOpenStory,
+  addStoryCheckIn,
+  setStoryCheckOut,
+  getClosedStoryLogs,
+  getStoryPanel,
+  setStoryPanel,
   normalizeBadge,
   takeMigratedBadgeIds,
   smallestFreeNumber,

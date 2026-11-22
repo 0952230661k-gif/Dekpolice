@@ -11,6 +11,8 @@ const { sendLog } = require("./utils/permissions");
 const adminPanelHandler = require("./handlers/adminPanelHandler");
 const applicationHandler = require("./handlers/applicationHandler");
 const caseHandler = require("./handlers/caseHandler");
+const storyHandler = require("./handlers/storyHandler");
+const story = require("./utils/story");
 const db = require("./utils/db");
 const weeklyScheduler = require("./utils/weeklyScheduler");
 const roster = require("./utils/roster");
@@ -86,6 +88,7 @@ client.once("ready", async () => {
   console.log(`โหลดคำสั่งทั้งหมด ${client.commands.size} คำสั่ง`);
   await syncAllNicknamesOnce(client); // ปรับชื่อเล่นทุกคนเป็นรูปแบบ "เลข [ยศ] ชื่อ" ครั้งเดียว
   await panel.refreshPanel(client); // ซิงก์แผงเข้าเวรที่ปักไว้ให้ตรงกับสถานะล่าสุดหลังบอทรีสตาร์ท
+  await story.refreshPanel(client); // ซิงก์แผงเวลาสตอรี่อุ้มให้ตรงสถานะล่าสุด
   await applicationPanel.refreshApplicationPanel(client); // ซิงก์แผงสมัครที่ปักไว้ให้ตรงกับ config ล่าสุด
   // ตัดรอบเวรอัตโนมัติ: 23:59 น. วันอาทิตย์ ปิดเวรที่ค้าง + สรุปลงห้องสัปดาห์ / 00:00 น. วันจันทร์ เปิดเวรต่อให้
   // (แอดมินยังสั่ง /เคลียร์ฐานข้อมูลรายสัปดาห์ เองได้เหมือนเดิม)
@@ -185,6 +188,16 @@ client.on("interactionCreate", async (interaction) => {
       return;
     }
 
+    if (interaction.customId.startsWith("story_")) {
+      try {
+        await storyHandler.handleButton(interaction);
+      } catch (err) {
+        console.error(`เกิดข้อผิดพลาดในระบบเวลาสตอรี่ (ปุ่ม ${interaction.customId}):`, err);
+        await safeErrorReply(interaction);
+      }
+      return;
+    }
+
     if (interaction.customId.startsWith("case_")) {
       try {
         await caseHandler.handleButton(interaction);
@@ -254,6 +267,16 @@ client.on("interactionCreate", async (interaction) => {
       await adminPanelHandler.handleModalSubmit(interaction);
     } catch (err) {
       console.error(`เกิดข้อผิดพลาดในแผงแอดมิน (modal ${interaction.customId}):`, err);
+      await safeErrorReply(interaction);
+    }
+    return;
+  }
+
+  if (interaction.isModalSubmit() && interaction.customId.startsWith("story_modal_")) {
+    try {
+      await storyHandler.handleModalSubmit(interaction);
+    } catch (err) {
+      console.error(`เกิดข้อผิดพลาดในระบบเวลาสตอรี่ (modal ${interaction.customId}):`, err);
       await safeErrorReply(interaction);
     }
     return;
