@@ -12,8 +12,8 @@ const { sendLog } = require("./permissions");
  * - ใช้กับ "เคสอุ้ม" เท่านั้น: ส่งเคสอุ้มได้เฉพาะคนที่อยู่ในเวลาสตอรี่ และเคสจะดึงทุกคนที่อยู่ในสตอรี่ตอนนั้นเข้าเคสอัตโนมัติ
  * - เข้าเวลาสตอรี่ได้ก็ต่อเมื่อใส่ OTP ที่ "แอดมินเป็นคนเปิด" ให้ถูกต้อง (แอดมินเปิด/ปิด OTP จากแผงแอดมิน)
  * - OTP เปิดได้ทีละอัน มีเวลาหมดอายุ (config.storyOtpMinutes) — OTP คุมแค่ "การเข้า" คนที่เข้าไปแล้วไม่โดนเตะเมื่อ OTP หมดอายุ
- * - ออกเองได้ทุกเมื่อ / แอดมินกด "จบสตอรี่" เพื่อปิด OTP + ออกให้ทุกคน / บอทตัดให้เองเมื่อค้างเกิน config.storyMaxHours
- *   และตอนตัดรอบสัปดาห์ (23:59 วันอาทิตย์) — เวลาสตอรี่ไม่เปิดต่อข้ามสัปดาห์
+ * - สตอรี่ "ไม่ถูกตัดจบอัตโนมัติ" ไม่ว่าจะข้ามวัน/ข้ามสัปดาห์ — จบเมื่อแอดมินกด "จบสตอรี่" (ปิด OTP + ออกให้ทุกคน + สรุปประจำวัน)
+ *   สมาชิกกดออกเองได้ทุกเมื่อ
  */
 
 const STATUS_IN = "เข้าสตอรี่";
@@ -38,10 +38,6 @@ function isValidCode(code) {
 function otpMinutes() {
   const n = Number(config.storyOtpMinutes);
   return Number.isFinite(n) && n > 0 ? n : 60;
-}
-function maxHours() {
-  const n = Number(config.storyMaxHours);
-  return Number.isFinite(n) && n > 0 ? n : 8;
 }
 
 /** OTP ที่ใช้งานได้ตอนนี้ (สถานะเปิดและยังไม่หมดเวลา) หรือ null */
@@ -198,42 +194,63 @@ function cutEmbed(title, cut, atIso) {
   return new EmbedBuilder().setColor(0xed4245).setTitle(title).setDescription(lines.join("\n") || "-").setTimestamp();
 }
 
-/** แอดมินกด "จบสตอรี่": ปิด OTP + ออกเวลาให้ทุกคนที่ยังอยู่ */
+/**
+ * สรุปสตอรี่ของ "วันนั้น" (วันที่ตามเวลาไทยของ ref): ใครเข้าเวลาสตอรี่บ้าง เข้า-ออกกี่โมง รวมกี่ชั่วโมง และเข้าเคสอุ้มห่อกี่เคสในวันนั้น
+ * นับกะที่เริ่ม (check_in) ในวันนั้น และปิดแล้วทั้งหมด (รวมที่เพิ่งถูกตัดตอนกดจบสตอรี่)
+ */
+async function dayRows(ref) {
+  const day = time.toTz(ref);
+  const logs = (await db.getClosedStoryLogs()).filter((l) => time.toTz(l.checkIn).isSame(day, "day"));
+  const cases = (await db.getAllCases()).filter((c) => isKidnapCase(c) && time.toTz(c.createdAt).isSame(day, "day"));
+  const byId = new Map();
+  const row = (id, name) => {
+    if (!byId.has(id)) byId.set(id, { id, name: name || id, hours: 0, spans: [], cases: 0 });
+    return byId.get(id);
+  };
+  for (const l of logs) {
+    const x = row(l.discordId, l.name);
+    x.hours += Number(l.hours) || 0;
+    x.spans.push(`${time.toTz(l.checkIn).format("HH:mm")}-${time.toTz(l.checkOut).format("HH:mm")}`);
+  }
+  for (const c of cases) for (const id of new Set([c.ownerId, ...c.participants])) row(id).cases += 1;
+  const rows = [...byId.values()].sort((a, b) => b.hours - a.hours || b.cases - a.cases);
+  return { rows, totalCases: cases.length, day };
+}
+
+function daySummaryEmbed(rows, totalCases, day) {
+  const lines = [];
+  let len = 0;
+  for (const [i, r] of rows.entries()) {
+    const line = `**${i + 1}.** <@${r.id}> — ${r.spans.length ? r.spans.join(", ") + " · " : ""}รวม ${time.formatDurationThai(r.hours)} · เคสอุ้มห่อ ${r.cases}`;
+    if (len + line.length > 3400) {
+      lines.push(`… และอีก ${rows.length - i} คน`);
+      break;
+    }
+    lines.push(line);
+    len += line.length + 1;
+  }
+  return new EmbedBuilder()
+    .setColor(0x9b59b6)
+    .setTitle(`🎬 สรุปสตอรี่อุ้ม วันที่ ${day.format("DD/MM/YYYY")}`)
+    .setDescription(
+      rows.length === 0
+        ? "วันนี้ไม่มีใครเข้าเวลาสตอรี่"
+        : `เข้าเวลาสตอรี่ **${rows.length}** คน · เคสอุ้มห่อรวม **${totalCases}** เคส\n\n${lines.join("\n")}`
+    )
+    .setFooter({ text: "เวลาสตอรี่แยกจากเวรปกติ" })
+    .setTimestamp();
+}
+
+/** แอดมินกด "จบสตอรี่": ปิด OTP + ออกเวลาให้ทุกคนที่ยังอยู่ + สรุปคนเข้าสตอรี่ของวันนั้นลงห้อง log */
 async function endStory(client, adminTag) {
   const closed = await closeOtp();
   const atIso = time.nowIso();
   const cut = await cutAll(`แอดมินจบสตอรี่ (${adminTag})`, atIso);
-  if (cut.length > 0) await sendLog(client, "สตอรี่อุ้ม", cutEmbed("🎬 จบสตอรี่อุ้ม — ออกเวลาให้ทุกคน", cut, atIso));
+  const { rows, totalCases, day } = await dayRows(atIso);
+  const summary = daySummaryEmbed(rows, totalCases, day);
+  await sendLog(client, "สตอรี่อุ้ม", summary);
   await refreshPanel(client).catch(() => {});
-  return { closedOtp: closed > 0, cut };
-}
-
-/** ตัดกะที่ค้างเกิน config.storyMaxHours (กันลืมกดออก) — เรียกจาก scheduler ทุกนาที */
-let lastOverdueCheck = 0;
-async function autoCutOverdue(client) {
-  if (Date.now() - lastOverdueCheck < 60 * 1000) return;
-  lastOverdueCheck = Date.now();
-  const limit = maxHours();
-  const nowM = time.now();
-  const overdue = (await db.getAllOpenStory()).filter((r) => nowM.diff(time.toTz(r.checkIn), "hour", true) >= limit);
-  if (overdue.length === 0) return;
-  const ids = new Set(overdue.map((r) => r.discordId));
-  // ปิดที่เวลา checkIn + limit (ไม่นับเกินเพดาน) ทีละกะ
-  const cut = [];
-  for (const row of overdue) {
-    const atIso = time.toTz(row.checkIn).add(limit, "hour").toISOString();
-    const res = await closeRow(row, atIso, `ตัดอัตโนมัติ (ค้างครบ ${limit} ชม.)`);
-    if (res && ids.has(row.discordId)) cut.push({ discordId: row.discordId, name: row.name, checkIn: row.checkIn, hours: res.hours });
-  }
-  if (cut.length > 0) {
-    const embed = new EmbedBuilder()
-      .setColor(0xed4245)
-      .setTitle(`⏰ ตัดเวลาสตอรี่อัตโนมัติ (ค้างครบ ${limit} ชม.)`)
-      .setDescription(cut.map((c) => `> <@${c.discordId}> — นับให้ ${time.formatDurationThai(c.hours)}`).join("\n").slice(0, 3900))
-      .setTimestamp();
-    await sendLog(client, "สตอรี่อุ้ม", embed);
-    await refreshPanel(client).catch(() => {});
-  }
+  return { closedOtp: closed > 0, cut, summary };
 }
 
 // ---------- แผงเวลาสตอรี่ (ข้อความปักหมุดในห้อง อัปเดตสด) ----------
@@ -351,16 +368,11 @@ async function myStats(discordId) {
   return { weekHours: weekHours + live, weekSessions: inWeek.length + (open ? 1 : 0), weekCases: cases.length, open };
 }
 
-/** ตัดรอบสัปดาห์ (เรียกจาก weeklyScheduler ตอน 23:59 วันอาทิตย์): ปิด OTP + ออกให้ทุกคน + ส่งสรุปสัปดาห์ลงห้อง log */
+/** ส่งสรุปเวลาสตอรี่รายสัปดาห์ตอน 23:59 วันอาทิตย์ — ไม่ตัดจบ/ไม่ปิด OTP ใคร (สตอรี่จบเมื่อแอดมินกด "จบสตอรี่" เท่านั้น) */
 async function weeklyCut(client, cutAt) {
-  await closeOtp();
-  const cut = await cutAll("ตัดรอบสัปดาห์อัตโนมัติ 23:59", cutAt.toISOString());
   const { rows, totalCases } = await weekRows(cutAt);
-  if (rows.length > 0 || cut.length > 0) {
-    await sendLog(client, "สตอรี่อุ้ม", weekSummaryEmbed(rows, totalCases, cutAt, true));
-  }
-  await refreshPanel(client).catch(() => {});
-  console.log(`[สตอรี่อุ้ม] ตัดรอบสัปดาห์ — ออกให้ ${cut.length} คน`);
+  if (rows.length > 0) await sendLog(client, "สตอรี่อุ้ม", weekSummaryEmbed(rows, totalCases, cutAt, true));
+  console.log(`[สตอรี่อุ้ม] ส่งสรุปสัปดาห์ ${rows.length} คน (ไม่ตัดจบเวลาสตอรี่)`);
 }
 
 module.exports = {
@@ -373,7 +385,8 @@ module.exports = {
   checkOut,
   cutAll,
   endStory,
-  autoCutOverdue,
+  dayRows,
+  daySummaryEmbed,
   panelEmbeds,
   postPanel,
   refreshPanel,

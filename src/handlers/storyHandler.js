@@ -164,7 +164,7 @@ async function handleAdminButton(interaction) {
     await interaction.deferUpdate();
     const res = await story.endStory(interaction.client, interaction.user.tag);
     return interaction.editReply({
-      embeds: [embeds.successEmbed(`จบสตอรี่แล้ว — ปิด OTP${res.closedOtp ? "" : " (ไม่มี OTP เปิดอยู่)"} และออกเวลาให้ ${res.cut.length} คน`)],
+      embeds: [embeds.successEmbed(`จบสตอรี่แล้ว — ปิด OTP${res.closedOtp ? "" : " (ไม่มี OTP เปิดอยู่)"} และออกเวลาให้ ${res.cut.length} คน`), res.summary],
       components: [],
     });
   }

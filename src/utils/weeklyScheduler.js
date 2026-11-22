@@ -103,7 +103,7 @@ async function runWeeklyCut(client, cutAt) {
     console.error("[ตัดรอบอัตโนมัติ] ส่งสรุปเคสรายสัปดาห์ไม่สำเร็จ:", err);
   }
 
-  // เวลาสตอรี่อุ้ม: ปิด OTP + ออกให้ทุกคน + ส่งสรุปสัปดาห์ (แยกจากเวร ไม่เปิดต่อข้ามสัปดาห์)
+  // เวลาสตอรี่อุ้ม: ส่งสรุปสัปดาห์อย่างเดียว ไม่ตัดจบใคร (สตอรี่จบเมื่อแอดมินกดจบเท่านั้น)
   try {
     await story.weeklyCut(client, cutAt);
   } catch (err) {
@@ -253,7 +253,6 @@ async function tick(client) {
 
     await resumeIfDue(client);
     await dailyCutIfDue(client);
-    await story.autoCutOverdue(client); // กันลืมออกจากเวลาสตอรี่ (ค้างเกิน config.storyMaxHours)
   } catch (err) {
     console.error("[ตัดรอบอัตโนมัติ] เกิดข้อผิดพลาด:", err);
   } finally {
