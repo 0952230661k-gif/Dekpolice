@@ -131,32 +131,30 @@ async function weekSummary(refDate) {
   });
   const active = inWeek.filter((c) => c.status === "active");
 
-  const byId = new Map();
-  const row = (id) => {
-    if (!byId.has(id)) byId.set(id, { id, own: 0, helped: 0, total: 0, kidnap: 0 });
-    return byId.get(id);
-  };
-  for (const c of active) {
-    const isKidnap = c.caseType === "อุ้มห่อ";
-    const people = [c.ownerId, ...c.participants.filter((p) => p !== c.ownerId)];
-    for (const id of people) {
-      const r = row(id);
-      if (id === c.ownerId) r.own += 1;
-      else r.helped += 1;
-      r.total += 1;
-      if (isKidnap) r.kidnap += 1;
+  // แยก 2 ส่วน: เคสทั่วไป และเคสอุ้มห่อ — แต่ละส่วนนับ "ทำเอง + ถูกแท็กร่วมทำ" รวมเป็นยอดเดียวต่อคน
+  const KIDNAP = "อุ้มห่อ";
+  const tally = (list) => {
+    const byId = new Map();
+    for (const c of list) {
+      for (const id of new Set([c.ownerId, ...c.participants])) byId.set(id, (byId.get(id) || 0) + 1);
     }
-  }
-  const rows = [...byId.values()].sort((a, b) => b.total - a.total || b.own - a.own || b.kidnap - a.kidnap);
+    return [...byId.entries()].map(([id, total]) => ({ id, total })).sort((a, b) => b.total - a.total);
+  };
+  const generalCases = active.filter((c) => c.caseType !== KIDNAP);
+  const kidnapCases = active.filter((c) => c.caseType === KIDNAP);
+  const general = tally(generalCases);
+  const kidnap = tally(kidnapCases);
   return {
     start,
     end,
-    rows,
+    general,
+    kidnap,
     totals: {
-      cases: active.length,
-      kidnap: active.filter((c) => c.caseType === "อุ้มห่อ").length,
+      generalCases: generalCases.length,
+      kidnapCases: kidnapCases.length,
       cancelled: inWeek.length - active.length,
-      people: rows.length,
+      generalPeople: general.length,
+      kidnapPeople: kidnap.length,
     },
   };
 }

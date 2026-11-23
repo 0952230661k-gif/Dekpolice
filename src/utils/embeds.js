@@ -315,50 +315,68 @@ function casePanelRow() {
 }
 
 /**
- * สรุปเคสประจำสัปดาห์ (ส่งห้องสรุปเคสทุกวันอาทิตย์ 23:59) — คืนอาร์เรย์ embed (แบ่งหน้าเมื่อคนเยอะ เพราะ description จำกัด 4096 ตัวอักษร)
+ * สรุปเคสประจำสัปดาห์ (ส่งห้องสรุปเคสทุกวันอาทิตย์ 23:59) — แยกเป็น 2 ชุด:
+ *   1) เคสทั่วไป  2) เคสอุ้มห่อ
+ * แต่ละชุดสรุปเฉพาะ "ยอดรวมต่อคน" = เคสที่ทำเอง + เคสที่ถูกแท็กร่วมทำ (ไม่แยกรายละเอียดทำเอง/ช่วย)
+ * คืนอาร์เรย์ embed (แบ่งหน้าเมื่อคนเยอะ เพราะ description จำกัด 4096 ตัวอักษร)
  * summary มาจาก caseStats.weekSummary, rangeText = ช่วงวันที่ภาษาไทย
  */
 function weeklyCaseSummaryEmbeds(summary, rangeText) {
-  const { rows, totals } = summary;
+  const { general, kidnap, totals } = summary;
   const medals = ["🥇", "🥈", "🥉"];
-  const head =
-    `**ช่วงสัปดาห์ ${rangeText}**\n` +
-    `> 📋 เคสทั้งหมด: \`${totals.cases}\` เคส\n` +
-    `> 🚨 คดีอุ้มห่อ: \`${totals.kidnap}\` เคส\n` +
-    `> 🚫 เคสที่ยกเลิก (ไม่นับ): \`${totals.cancelled}\` เคส\n` +
-    `> 👮 เจ้าหน้าที่ที่มีเคส: \`${totals.people}\` คน`;
 
-  const lines = rows.map((r, i) => {
-    const rank = medals[i] || `**${i + 1}.**`;
-    const kidnap = r.kidnap > 0 ? ` · 🚨 ${r.kidnap}` : "";
-    return `${rank} <@${r.id}> — รวม \`${r.total}\` (ทำเอง ${r.own} · ช่วย ${r.helped})${kidnap}`;
-  });
-
-  // แบ่งหน้า ≤ 3500 ตัวอักษรของรายชื่อต่อ embed
-  const pages = [];
-  let cur = [];
-  let len = 0;
-  for (const line of lines) {
-    if (len + line.length + 1 > 3500 && cur.length > 0) {
-      pages.push(cur);
-      cur = [];
-      len = 0;
+  const build = ({ title, color, head, list, empty, footer }) => {
+    const lines = list.map((r, i) => `${medals[i] || `**${i + 1}.**`} <@${r.id}> — รวม \`${r.total}\` เคส`);
+    const pages = [];
+    let cur = [];
+    let len = 0;
+    for (const line of lines) {
+      if (len + line.length + 1 > 3500 && cur.length > 0) {
+        pages.push(cur);
+        cur = [];
+        len = 0;
+      }
+      cur.push(line);
+      len += line.length + 1;
     }
-    cur.push(line);
-    len += line.length + 1;
-  }
-  if (cur.length > 0) pages.push(cur);
-  if (pages.length === 0) pages.push([]);
+    if (cur.length > 0) pages.push(cur);
+    if (pages.length === 0) pages.push([]);
+    return pages.map((page, i) => {
+      const body = page.length > 0 ? page.join("\n") : empty;
+      return new EmbedBuilder()
+        .setColor(color)
+        .setTitle(i === 0 ? title : `${title} (ต่อ ${i + 1}/${pages.length})`)
+        .setDescription(i === 0 ? `${head}\n\n🏆 **อันดับ**\n${body}` : body)
+        .setFooter({ text: `${footer}${pages.length > 1 ? ` · หน้า ${i + 1}/${pages.length}` : ""}` });
+    });
+  };
 
-  return pages.map((page, i) => {
-    const body = page.length > 0 ? page.join("\n") : "*ไม่มีเคสในสัปดาห์นี้*";
-    const embed = new EmbedBuilder()
-      .setColor(0xfee75c)
-      .setTitle(i === 0 ? "📋 สรุปเคสประจำสัปดาห์" : `📋 สรุปเคสประจำสัปดาห์ (ต่อ ${i + 1}/${pages.length})`)
-      .setDescription(i === 0 ? `${head}\n\n🏆 **อันดับ**\n${body}` : body)
-      .setFooter({ text: `ตัดรอบทุกวันอาทิตย์ 23:59 น. (เวลาไทย)${pages.length > 1 ? ` · หน้า ${i + 1}/${pages.length}` : ""}` });
-    return embed;
+  const generalEmbeds = build({
+    title: "📋 สรุปเคสทั่วไปประจำสัปดาห์",
+    color: 0xfee75c,
+    head:
+      `**ช่วงสัปดาห์ ${rangeText}**\n` +
+      `> 📋 เคสทั่วไป: \`${totals.generalCases}\` เคส\n` +
+      `> 🚫 เคสที่ยกเลิก (ไม่นับ): \`${totals.cancelled}\` เคส\n` +
+      `> 👮 เจ้าหน้าที่ที่มีเคส: \`${totals.generalPeople}\` คน\n` +
+      `-# ยอดรวมต่อคน = เคสที่ทำเอง + เคสที่ถูกแท็กร่วมทำ`,
+    list: general,
+    empty: "*ไม่มีเคสทั่วไปในสัปดาห์นี้*",
+    footer: "ตัดรอบทุกวันอาทิตย์ 23:59 น. (เวลาไทย)",
   });
+  const kidnapEmbeds = build({
+    title: "🚨 สรุปเคสอุ้มห่อประจำสัปดาห์",
+    color: 0xfaa61a,
+    head:
+      `**ช่วงสัปดาห์ ${rangeText}**\n` +
+      `> 🚨 เคสอุ้มห่อ: \`${totals.kidnapCases}\` เคส\n` +
+      `> 👮 เจ้าหน้าที่ที่เข้าเคสอุ้มห่อ: \`${totals.kidnapPeople}\` คน\n` +
+      `-# ยอดรวมต่อคน = เคสที่ทำเอง + เคสที่ถูกแท็กร่วมทำ`,
+    list: kidnap,
+    empty: "*ไม่มีเคสอุ้มห่อในสัปดาห์นี้*",
+    footer: "ตัดรอบทุกวันอาทิตย์ 23:59 น. (เวลาไทย)",
+  });
+  return [...generalEmbeds, ...kidnapEmbeds];
 }
 
 /** หน้า "ข้อมูลการทำงาน" ของตัวเอง (ส่งแบบเห็นคนเดียว) */
