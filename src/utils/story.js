@@ -243,7 +243,7 @@ function daySummaryEmbed(rows, totalCases, day) {
   let len = 0;
   let hidden = 0;
   for (const [i, r] of withTime.entries()) {
-    const rank = MEDALS[i] || `\`${String(i + 1).padStart(2, " ")}.\``;
+    const rank = MEDALS[i] || "▫️";
     const block =
       `${rank} <@${r.id}>\n` +
       `-# ⏱️ **${shortDur(r.hours)}** · 🎭 ${r.cases} เคส\n` +
@@ -369,7 +369,7 @@ function weekSummaryEmbed(rows, totalCases, ref, auto = false) {
   const blocks = [];
   let len = 0;
   for (const [i, r] of rows.entries()) {
-    const rank = MEDALS[i] || `\`${String(i + 1).padStart(2, " ")}.\``;
+    const rank = MEDALS[i] || "▫️";
     const block =
       `${rank} <@${r.id}>\n` + `-# ⏱️ **${shortDur(r.hours)}** · ${r.sessions} รอบ · 🎭 ${r.cases} เคส`;
     if (len + block.length > 3300) {
