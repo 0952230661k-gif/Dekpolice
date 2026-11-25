@@ -232,20 +232,12 @@ function shortDur(hours) {
   return m === 0 ? `${h} ชม.` : `${h} ชม. ${m} น.`;
 }
 
-/** แถบเทียบชั่วโมงกับคนที่มากสุด เช่น ▰▰▰▰▰▰▱▱▱▱ */
-function bar(value, max, size = 10) {
-  if (!max || value <= 0) return "▱".repeat(size);
-  const filled = Math.max(1, Math.round((value / max) * size));
-  return "▰".repeat(filled) + "▱".repeat(size - filled);
-}
-
 const MEDALS = ["🥇", "🥈", "🥉"];
 
 function daySummaryEmbed(rows, totalCases, day) {
   const withTime = rows.filter((r) => r.hours > 0);
   const noTime = rows.filter((r) => r.hours <= 0);
   const totalHours = rows.reduce((sum, r) => sum + r.hours, 0);
-  const maxHours = withTime.length ? Math.max(...withTime.map((r) => r.hours)) : 0;
 
   const blocks = [];
   let len = 0;
@@ -254,7 +246,7 @@ function daySummaryEmbed(rows, totalCases, day) {
     const rank = MEDALS[i] || `\`${String(i + 1).padStart(2, " ")}.\``;
     const block =
       `${rank} <@${r.id}>\n` +
-      `-# ⏱️ **${shortDur(r.hours)}** ${bar(r.hours, maxHours)} · 🎭 ${r.cases} เคส\n` +
+      `-# ⏱️ **${shortDur(r.hours)}** · 🎭 ${r.cases} เคส\n` +
       `-# 🕗 ${r.spans.join("  ·  ")}`;
     if (len + block.length > 3000) {
       hidden = withTime.length - i;
@@ -374,13 +366,12 @@ async function weekRows(ref) {
 function weekSummaryEmbed(rows, totalCases, ref, auto = false) {
   const range = time.weekRangeThai(time.toTz(ref));
   const totalHours = rows.reduce((sum, r) => sum + r.hours, 0);
-  const maxHours = rows.length ? Math.max(...rows.map((r) => r.hours)) : 0;
   const blocks = [];
   let len = 0;
   for (const [i, r] of rows.entries()) {
     const rank = MEDALS[i] || `\`${String(i + 1).padStart(2, " ")}.\``;
     const block =
-      `${rank} <@${r.id}>\n` + `-# ⏱️ **${shortDur(r.hours)}** ${bar(r.hours, maxHours)} · ${r.sessions} รอบ · 🎭 ${r.cases} เคส`;
+      `${rank} <@${r.id}>\n` + `-# ⏱️ **${shortDur(r.hours)}** · ${r.sessions} รอบ · 🎭 ${r.cases} เคส`;
     if (len + block.length > 3300) {
       blocks.push(`… และอีก ${rows.length - i} คน`);
       break;
