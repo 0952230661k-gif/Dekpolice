@@ -213,34 +213,70 @@ async function dayRows(ref) {
     x.hours += Number(l.hours) || 0;
     const inT = time.toTz(l.checkIn);
     const outT = time.toTz(l.checkOut);
-    x.spans.push(`${inT.format(inT.isSame(outT, "day") ? "HH:mm" : "DD/MM HH:mm")}-${outT.format("HH:mm")}`);
+    x.spans.push(`${inT.format(inT.isSame(outT, "day") ? "HH:mm" : "DD/MM HH:mm")} → ${outT.format("HH:mm")}`);
   }
   for (const c of cases) for (const id of new Set([c.ownerId, ...c.participants])) row(id).cases += 1;
   const rows = [...byId.values()].sort((a, b) => b.hours - a.hours || b.cases - a.cases);
   return { rows, totalCases: cases.length, day };
 }
 
+// ---------- ตัวช่วยจัดหน้าตาสรุป (อ่านง่าย: ไม่โชว์วินาที, มีแถบเทียบชั่วโมง, 2 บรรทัดต่อคน) ----------
+
+/** ชั่วโมงแบบสั้น: 5 ชม. 24 น. / 45 น. / - */
+function shortDur(hours) {
+  const mins = Math.round((Number(hours) || 0) * 60);
+  if (mins <= 0) return "0 น.";
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  if (h === 0) return `${m} น.`;
+  return m === 0 ? `${h} ชม.` : `${h} ชม. ${m} น.`;
+}
+
+/** แถบเทียบชั่วโมงกับคนที่มากสุด เช่น ▰▰▰▰▰▰▱▱▱▱ */
+function bar(value, max, size = 10) {
+  if (!max || value <= 0) return "▱".repeat(size);
+  const filled = Math.max(1, Math.round((value / max) * size));
+  return "▰".repeat(filled) + "▱".repeat(size - filled);
+}
+
+const MEDALS = ["🥇", "🥈", "🥉"];
+
 function daySummaryEmbed(rows, totalCases, day) {
-  const lines = [];
+  const withTime = rows.filter((r) => r.hours > 0);
+  const noTime = rows.filter((r) => r.hours <= 0);
+  const totalHours = rows.reduce((sum, r) => sum + r.hours, 0);
+  const maxHours = withTime.length ? Math.max(...withTime.map((r) => r.hours)) : 0;
+
+  const blocks = [];
   let len = 0;
-  for (const [i, r] of rows.entries()) {
-    const line = `**${i + 1}.** <@${r.id}> — ${r.spans.length ? r.spans.join(", ") + " · " : ""}รวม ${time.formatDurationThai(r.hours)} · เคสอุ้มห่อ ${r.cases}`;
-    if (len + line.length > 3400) {
-      lines.push(`… และอีก ${rows.length - i} คน`);
+  let hidden = 0;
+  for (const [i, r] of withTime.entries()) {
+    const rank = MEDALS[i] || `\`${String(i + 1).padStart(2, " ")}.\``;
+    const block =
+      `${rank} <@${r.id}>\n` +
+      `-# ⏱️ **${shortDur(r.hours)}** ${bar(r.hours, maxHours)} · 🎭 ${r.cases} เคส\n` +
+      `-# 🕗 ${r.spans.join("  ·  ")}`;
+    if (len + block.length > 3000) {
+      hidden = withTime.length - i;
       break;
     }
-    lines.push(line);
-    len += line.length + 1;
+    blocks.push(block);
+    len += block.length + 2;
   }
+
+  let desc =
+    `> 👥 **${rows.length}** คน  ·  🎭 เคสอุ้มห่อ **${totalCases}** เคส  ·  ⏱️ รวม **${shortDur(totalHours)}**\n\n` +
+    (blocks.length ? blocks.join("\n\n") : "วันนี้ไม่มีใครเข้าเวลาสตอรี่");
+  if (hidden > 0) desc += `\n\n… และอีก ${hidden} คน`;
+  if (noTime.length > 0) {
+    desc += `\n\n**ไม่มีเวลาสตอรี่ในวันนี้ (${noTime.length} คน)** — อยู่ในเคสแต่ถูกตัด/ออกก่อน\n-# ${noTime.map((r) => `<@${r.id}> (${r.cases} เคส)`).join(" · ")}`;
+  }
+
   return new EmbedBuilder()
     .setColor(0x9b59b6)
-    .setTitle(`🎬 สรุปสตอรี่อุ้ม วันที่ ${day.format("DD/MM/YYYY")}`)
-    .setDescription(
-      rows.length === 0
-        ? "วันนี้ไม่มีใครเข้าเวลาสตอรี่"
-        : `เข้าเวลาสตอรี่ **${rows.length}** คน · เคสอุ้มห่อรวม **${totalCases}** เคส\n\n${lines.join("\n")}`
-    )
-    .setFooter({ text: "เวลาสตอรี่แยกจากเวรปกติ" })
+    .setTitle(`🎬 สรุปสตอรี่อุ้ม · ${day.format("DD/MM/YYYY")}`)
+    .setDescription(desc.length > 4000 ? desc.slice(0, 3990) + "\n…" : desc)
+    .setFooter({ text: "เวลาสตอรี่แยกจากเวรปกติ · เรียงตามชั่วโมงมาก → น้อย" })
     .setTimestamp();
 }
 
@@ -337,22 +373,28 @@ async function weekRows(ref) {
 
 function weekSummaryEmbed(rows, totalCases, ref, auto = false) {
   const range = time.weekRangeThai(time.toTz(ref));
-  const lines = [];
+  const totalHours = rows.reduce((sum, r) => sum + r.hours, 0);
+  const maxHours = rows.length ? Math.max(...rows.map((r) => r.hours)) : 0;
+  const blocks = [];
   let len = 0;
   for (const [i, r] of rows.entries()) {
-    const line = `**${i + 1}.** <@${r.id}> — ${time.formatDurationThai(r.hours)} · ${r.sessions} รอบ · เคสอุ้ม ${r.cases}`;
-    if (len + line.length > 3400) {
-      lines.push(`… และอีก ${rows.length - i} คน`);
+    const rank = MEDALS[i] || `\`${String(i + 1).padStart(2, " ")}.\``;
+    const block =
+      `${rank} <@${r.id}>\n` + `-# ⏱️ **${shortDur(r.hours)}** ${bar(r.hours, maxHours)} · ${r.sessions} รอบ · 🎭 ${r.cases} เคส`;
+    if (len + block.length > 3300) {
+      blocks.push(`… และอีก ${rows.length - i} คน`);
       break;
     }
-    lines.push(line);
-    len += line.length + 1;
+    blocks.push(block);
+    len += block.length + 2;
   }
   return new EmbedBuilder()
     .setColor(0x9b59b6)
-    .setTitle(`🎭 สรุปเวลาสตอรี่อุ้ม ${range}`)
+    .setTitle(`🎭 สรุปเวลาสตอรี่อุ้ม · ${range}`)
     .setDescription(
-      (rows.length === 0 ? "ไม่มีข้อมูลเวลาสตอรี่ในสัปดาห์นี้" : `${auto ? "ตัดรอบสัปดาห์อัตโนมัติ · " : ""}เคสอุ้มรวม **${totalCases}** เคส · ${rows.length} คน\n\n${lines.join("\n")}`)
+      rows.length === 0
+        ? "ไม่มีข้อมูลเวลาสตอรี่ในสัปดาห์นี้"
+        : `${auto ? "ตัดรอบสัปดาห์อัตโนมัติ\n" : ""}> 👥 **${rows.length}** คน  ·  🎭 เคสอุ้มรวม **${totalCases}** เคส  ·  ⏱️ รวม **${shortDur(totalHours)}**\n\n${blocks.join("\n\n")}`
     )
     .setFooter({ text: "เวลาสตอรี่แยกจากเวรปกติ · เคสอุ้ม = เคสที่ส่งในห้องเคสอุ้ม" })
     .setTimestamp();
