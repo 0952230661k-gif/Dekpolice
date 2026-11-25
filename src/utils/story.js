@@ -196,11 +196,12 @@ function cutEmbed(title, cut, atIso) {
 
 /**
  * สรุปสตอรี่ของ "วันนั้น" (วันที่ตามเวลาไทยของ ref): ใครเข้าเวลาสตอรี่บ้าง เข้า-ออกกี่โมง รวมกี่ชั่วโมง และเข้าเคสอุ้มห่อกี่เคสในวันนั้น
- * นับกะที่เริ่ม (check_in) ในวันนั้น และปิดแล้วทั้งหมด (รวมที่เพิ่งถูกตัดตอนกดจบสตอรี่)
+ * นับกะที่ปิด (check_out) ในวันนั้น (รวมที่เพิ่งถูกตัดตอนกดจบสตอรี่)
  */
 async function dayRows(ref) {
   const day = time.toTz(ref);
-  const logs = (await db.getClosedStoryLogs()).filter((l) => time.toTz(l.checkIn).isSame(day, "day"));
+  // นับกะที่ "ปิดในวันนั้น" (check_out) — สตอรี่ที่เข้าไว้ข้ามวัน/ข้ามเที่ยงคืนจะไม่หลุดจากสรุป
+  const logs = (await db.getClosedStoryLogs()).filter((l) => l.checkOut && time.toTz(l.checkOut).isSame(day, "day"));
   const cases = (await db.getAllCases()).filter((c) => isKidnapCase(c) && time.toTz(c.createdAt).isSame(day, "day"));
   const byId = new Map();
   const row = (id, name) => {
@@ -210,7 +211,9 @@ async function dayRows(ref) {
   for (const l of logs) {
     const x = row(l.discordId, l.name);
     x.hours += Number(l.hours) || 0;
-    x.spans.push(`${time.toTz(l.checkIn).format("HH:mm")}-${time.toTz(l.checkOut).format("HH:mm")}`);
+    const inT = time.toTz(l.checkIn);
+    const outT = time.toTz(l.checkOut);
+    x.spans.push(`${inT.format(inT.isSame(outT, "day") ? "HH:mm" : "DD/MM HH:mm")}-${outT.format("HH:mm")}`);
   }
   for (const c of cases) for (const id of new Set([c.ownerId, ...c.participants])) row(id).cases += 1;
   const rows = [...byId.values()].sort((a, b) => b.hours - a.hours || b.cases - a.cases);
