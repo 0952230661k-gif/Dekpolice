@@ -279,7 +279,9 @@ function panelRow() {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId("story_in").setLabel("เข้าสตอรี่ (ใส่ OTP)").setEmoji("🔑").setStyle(ButtonStyle.Success),
     new ButtonBuilder().setCustomId("story_out").setLabel("ออกสตอรี่").setEmoji("🔴").setStyle(ButtonStyle.Danger),
-    new ButtonBuilder().setCustomId("story_me").setLabel("เวลาของฉัน").setEmoji("⏱️").setStyle(ButtonStyle.Secondary)
+    new ButtonBuilder().setCustomId("story_me").setLabel("เวลาของฉัน").setEmoji("⏱️").setStyle(ButtonStyle.Secondary),
+    // ปุ่มแอดมิน (เหมือนปุ่ม "แอดมิน" บนแผงเข้าเวร) — ขึ้นต้น ap_ จึงถูกเช็คสิทธิ์แอดมินที่ adminPanelHandler ก่อนเสมอ
+    new ButtonBuilder().setCustomId("ap_story_cut").setLabel("แอดมิน").setEmoji("🛡️").setStyle(ButtonStyle.Danger)
   );
 }
 

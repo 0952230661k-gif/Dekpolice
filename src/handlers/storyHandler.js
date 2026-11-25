@@ -18,6 +18,8 @@ const { sendLog } = require("../utils/permissions");
 
 const EPHEMERAL = MessageFlags.Ephemeral;
 
+const pendingStoryCut = new Map(); // adminId -> { ids: string[] | null (null = ตัดทุกคน) } รอกรอกหมายเหตุใน modal
+
 // ====================== ฝั่งสมาชิก (ปุ่มบนแผงเวลาสตอรี่) ======================
 
 function otpModal() {
@@ -126,8 +128,71 @@ function endConfirmRow() {
   );
 }
 
+function elapsedText(checkInIso) {
+  const mins = Math.max(0, Math.round(time.now().diff(time.toTz(checkInIso), "minute", true)));
+  if (mins < 60) return `${mins} นาที`;
+  return `${Math.floor(mins / 60)} ชม. ${mins % 60} นาที`;
+}
+
+function storyCutModal(isAll) {
+  const modal = new ModalBuilder().setCustomId("ap_modal_story_cut").setTitle(isAll ? "ตัดเวลาสตอรี่ทุกคน (0 ชม.)" : "ตัดเวลาสตอรี่ (0 ชม.)");
+  modal.addComponents(
+    new ActionRowBuilder().addComponents(
+      new TextInputBuilder()
+        .setCustomId("note")
+        .setLabel("หมายเหตุ (จำเป็น)")
+        .setPlaceholder("เช่น ลืมออกสตอรี่ / เน็ตหลุด / ออกเกมแล้วไม่ได้กดออก")
+        .setStyle(TextInputStyle.Paragraph)
+        .setMinLength(1)
+        .setMaxLength(500)
+        .setRequired(true)
+    )
+  );
+  return modal;
+}
+
+/** ปุ่ม "แอดมิน" บนแผงสตอรี่ → เลือกคนที่จะตัด (หลายคนได้) หรือตัดทั้งหมด */
+async function handleStoryCutMenu(interaction) {
+  const open = await db.getAllOpenStory();
+  if (open.length === 0) {
+    return interaction.reply({ embeds: [embeds.adminActionEmbed("✂️ ตัดเวลาสตอรี่", "ไม่มีใครอยู่ในสตอรี่ ไม่มีอะไรให้ตัด")], flags: EPHEMERAL });
+  }
+  const shown = open.slice(0, 25); // select menu สูงสุด 25 ตัวเลือก (ถ้ามีเกินใช้ปุ่ม "ตัดทั้งหมด")
+  const select = new StringSelectMenuBuilder()
+    .setCustomId("ap_select_storycut")
+    .setPlaceholder("เลือกคนที่จะตัดเวลาสตอรี่ (เลือกได้หลายคน)")
+    .setMinValues(1)
+    .setMaxValues(shown.length);
+  for (const r of shown) {
+    select.addOptions({
+      label: String(r.name || r.discordId).slice(0, 100),
+      description: `อยู่ในสตอรี่มาแล้ว ${elapsedText(r.checkIn)}`.slice(0, 100),
+      value: r.discordId,
+    });
+  }
+  const allRow = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId("ap_story_cut_all").setLabel(`ตัดทั้งหมด (${open.length} คน)`).setEmoji("✂️").setStyle(ButtonStyle.Danger)
+  );
+  return interaction.reply({
+    embeds: [
+      embeds.adminActionEmbed(
+        "✂️ ตัดเวลาสตอรี่",
+        `มีคนอยู่ในสตอรี่ ${open.length} คน — เลือกคนที่จะตัด แล้วระบบจะให้ใส่**หมายเหตุ** (จำเป็นต้องกรอก) จากนั้น**ตัดเป็น 0 ชั่วโมงทันที** (ไม่นับชั่วโมงของรอบนี้) · ต่างจาก "จบสตอรี่" ที่นับชั่วโมงให้`
+      ),
+    ],
+    components: [new ActionRowBuilder().addComponents(select), allRow],
+    flags: EPHEMERAL,
+  });
+}
+
 async function handleAdminButton(interaction) {
   const id = interaction.customId;
+
+  if (id === "ap_story_cut") return handleStoryCutMenu(interaction);
+  if (id === "ap_story_cut_all") {
+    pendingStoryCut.set(interaction.user.id, { ids: null });
+    return interaction.showModal(storyCutModal(true));
+  }
 
   if (id === "ap_story_open") return interaction.showModal(adminOtpModal());
 
@@ -195,7 +260,43 @@ async function handleAdminButton(interaction) {
   }
 }
 
+async function handleModalStoryCut(interaction) {
+  await interaction.deferReply({ flags: EPHEMERAL });
+  const pending = pendingStoryCut.get(interaction.user.id);
+  pendingStoryCut.delete(interaction.user.id);
+  if (!pending) {
+    return interaction.editReply({ embeds: [embeds.errorEmbed("หมดเวลาหรือไม่พบรายการที่เลือกไว้ กรุณากดปุ่ม แอดมิน แล้วเลือกใหม่อีกครั้ง")] });
+  }
+  const note = interaction.fields.getTextInputValue("note").trim();
+  if (!note) {
+    return interaction.editReply({ embeds: [embeds.errorEmbed("ต้องใส่หมายเหตุก่อนตัดเวลา (ยังไม่มีการตัดเกิดขึ้น) กรุณากดปุ่มใหม่อีกครั้ง")] });
+  }
+
+  const openRows = await db.getAllOpenStory();
+  const cut = await db.cutOpenStory(pending.ids, `${note} (แอดมิน ${interaction.user.tag})`, time.nowIso());
+  if (cut === 0) {
+    return interaction.editReply({ embeds: [embeds.errorEmbed("ไม่มีใครอยู่ในสตอรี่ค้างแล้ว (อาจมีคนออกไปก่อนหน้านี้)")] });
+  }
+  const done = pending.ids ? openRows.filter((r) => pending.ids.includes(r.discordId)) : openRows;
+
+  const lines = done.map((r) => `• <@${r.discordId}> (${r.name}) — อยู่ในสตอรี่มาแล้ว ${elapsedText(r.checkIn)}`);
+  let text = lines.join("\n") || "-";
+  if (text.length > 1000) text = text.slice(0, 990) + "\n…";
+  const embed = embeds.adminActionEmbed(
+    "✂️ ตัดเวลาสตอรี่ (0 ชม.)",
+    `ตัดเวลาสตอรี่เป็น 0 ชั่วโมง ${done.length} คน เรียบร้อย — ดำเนินการโดย ${interaction.user.tag}`,
+    [
+      { name: "รายชื่อ", value: text },
+      { name: "หมายเหตุ", value: note.slice(0, 1000) },
+    ]
+  );
+  await interaction.editReply({ embeds: [embed] });
+  await sendLog(interaction.client, "แอดมิน", embed);
+  await story.refreshPanel(interaction.client);
+}
+
 async function handleAdminModalSubmit(interaction) {
+  if (interaction.customId === "ap_modal_story_cut") return handleModalStoryCut(interaction);
   if (interaction.customId !== "ap_modal_story_otp") return;
   await interaction.deferReply({ flags: EPHEMERAL });
   const res = await story.openOtp(interaction.user.id, {
@@ -219,6 +320,10 @@ async function handleAdminModalSubmit(interaction) {
 }
 
 async function handleAdminStringSelect(interaction) {
+  if (interaction.customId === "ap_select_storycut") {
+    pendingStoryCut.set(interaction.user.id, { ids: interaction.values });
+    return interaction.showModal(storyCutModal(false));
+  }
   if (interaction.customId !== "ap_select_storyweek") return;
   await interaction.deferUpdate();
   const ref = time.toTz(interaction.values[0]);

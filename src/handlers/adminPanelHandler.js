@@ -733,7 +733,7 @@ async function handleStringSelect(interaction) {
   if (await blockIfNotAdmin(interaction)) return;
 
   const id = interaction.customId;
-  if (id === "ap_select_storyweek") return storyHandler.handleAdminStringSelect(interaction);
+  if (id === "ap_select_storyweek" || id === "ap_select_storycut") return storyHandler.handleAdminStringSelect(interaction);
   if (id === "ap_select_cutduty") return handleSelectCutDuty(interaction);
   if (id === "ap_select_regposition") return handleSelectRegPosition(interaction);
   if (id === "ap_select_setposition") return handleSelectSetPosition(interaction);
@@ -997,7 +997,7 @@ async function handleModalSubmit(interaction) {
 
   const [action, targetId] = interaction.customId.split(":");
 
-  if (action === "ap_modal_story_otp") return storyHandler.handleAdminModalSubmit(interaction);
+  if (action === "ap_modal_story_otp" || action === "ap_modal_story_cut") return storyHandler.handleAdminModalSubmit(interaction);
   if (action === "ap_modal_cutduty") return handleModalCutDuty(interaction);
   if (action === "ap_modal_addhours") return handleModalAddHours(interaction, targetId);
   if (action === "ap_modal_subhours") return handleModalSubHours(interaction, targetId);

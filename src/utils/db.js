@@ -978,6 +978,30 @@ async function setStoryCheckOut(id, checkOutIso, hours, note = null) {
   return Number(res.rowsAffected) > 0;
 }
 
+/**
+ * แอดมินตัดเวลาสตอรี่ค้าง (เหมือนตัดเวรปกติ) — ปิดกะเป็น 0 ชม. สถานะ 'ล้างแล้ว (แอดมิน)' + หมายเหตุ
+ * discordIds = null → ตัดทุกคนที่ยังอยู่ในสตอรี่ ; ไม่ใช่ 'ออกสตอรี่' จึงไม่ถูกนับในสรุปรายวัน/รายสัปดาห์
+ * คืนจำนวนแถวที่ถูกตัด
+ */
+async function cutOpenStory(discordIds = null, note = null, atIso = null) {
+  await ready;
+  const at = atIso || new Date().toISOString();
+  if (Array.isArray(discordIds)) {
+    if (discordIds.length === 0) return 0;
+    const marks = discordIds.map(() => "?").join(",");
+    const res = await client.execute({
+      sql: `UPDATE story_log SET status = 'ล้างแล้ว (แอดมิน)', check_out = ?, hours = 0, note = ? WHERE status = 'เข้าสตอรี่' AND discord_id IN (${marks})`,
+      args: [at, note, ...discordIds],
+    });
+    return Number(res.rowsAffected) || 0;
+  }
+  const res = await client.execute({
+    sql: "UPDATE story_log SET status = 'ล้างแล้ว (แอดมิน)', check_out = ?, hours = 0, note = ? WHERE status = 'เข้าสตอรี่'",
+    args: [at, note],
+  });
+  return Number(res.rowsAffected) || 0;
+}
+
 /** ประวัติกะสตอรี่ที่ปิดแล้ว (ออกสตอรี่) ของทุกคน หรือคนเดียว */
 async function getClosedStoryLogs(discordId = null) {
   await ready;
@@ -1011,6 +1035,7 @@ module.exports = {
   getAllOpenStory,
   addStoryCheckIn,
   setStoryCheckOut,
+  cutOpenStory,
   getClosedStoryLogs,
   getStoryPanel,
   setStoryPanel,
